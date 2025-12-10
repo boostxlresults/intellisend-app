@@ -52,17 +52,18 @@ export default function Settings() {
 
   const handleSaveSettings = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedTenant || !tenantSettings) return;
+    if (!selectedTenant) return;
     setSavingSettings(true);
     const formData = new FormData(e.currentTarget);
     try {
-      const updated = await api.updateTenantSettings(selectedTenant.id, {
+      await api.updateTenantSettings(selectedTenant.id, {
         timezone: formData.get('timezone') as string,
         quietHoursStart: formData.get('quietHoursStart') as unknown as number,
         quietHoursEnd: formData.get('quietHoursEnd') as unknown as number,
         defaultFromNumberId: formData.get('defaultFromNumberId') as string || undefined,
       });
-      setTenantSettings(updated);
+      const refreshedSettings = await api.getTenantSettings(selectedTenant.id);
+      setTenantSettings(refreshedSettings);
       alert('Settings saved successfully!');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';

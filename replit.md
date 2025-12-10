@@ -39,11 +39,12 @@ IntelliSend is a production-ready outbound SMS platform for home-services brands
 ## Key Features
 
 1. **Multi-Tenant Architecture**: Each tenant has their own contacts, conversations, campaigns, and phone numbers
-2. **Contact Management**: Import contacts via JSON, add tags, segment audiences
+2. **Contact Management**: Import contacts via JSON or CSV, add tags, segment audiences
 3. **Campaign System**: Create blast campaigns with message templates and AI assistance
 4. **Conversation Inbox**: Two-way SMS messaging with AI reply suggestions
-5. **Compliance**: STOP word detection, suppression lists, quiet hours ready
-6. **Twilio Integration**: Webhooks for inbound SMS and status callbacks
+5. **Compliance**: STOP word detection (STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT), suppression lists, quiet hours enforcement
+6. **Twilio Integration**: Webhooks for inbound SMS and status callbacks with signature validation
+7. **Tenant Settings**: Per-tenant timezone, quiet hours (no SMS during configured hours), and default from number
 
 ## Environment Variables
 
@@ -60,11 +61,13 @@ Required for full functionality:
 - `POST /api/tenants` - Create a tenant
 - `GET /api/tenants/:tenantId/numbers` - List tenant phone numbers
 - `POST /api/tenants/:tenantId/numbers` - Add phone number
+- `GET /api/tenants/:tenantId/settings` - Get tenant settings (timezone, quiet hours)
+- `POST /api/tenants/:tenantId/settings` - Update tenant settings
 
 ### Contacts
 - `GET /api/tenants/:tenantId/contacts` - List contacts with pagination
 - `POST /api/tenants/:tenantId/contacts` - Create contact
-- `POST /api/tenants/:tenantId/contacts/import` - Import contacts from JSON
+- `POST /api/tenants/:tenantId/contacts/import` - Import contacts from JSON or CSV (multipart/form-data)
 - `POST /api/tenants/:tenantId/contacts/:contactId/tags` - Add tag
 
 ### Campaigns
@@ -99,5 +102,10 @@ The application runs with two servers:
 - Multi-tenant data model with Prisma
 - Complete REST API for all entities
 - React dashboard with all core views
-- Twilio webhook handlers for SMS
+- Twilio webhook handlers for SMS with signature validation
 - AI stub layer for future integration
+- TenantSettings model: timezone, quiet hours, default from number
+- Quiet hours enforcement in campaign scheduler and conversations
+- CSV contact import with Papa Parse for proper quoted field handling
+- Global tags support on import
+- Settings UI for timezone, quiet hours, default from number

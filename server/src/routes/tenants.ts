@@ -138,6 +138,14 @@ router.post('/:tenantId/settings', async (req, res) => {
     }
     
     if (defaultFromNumberId !== undefined) {
+      if (defaultFromNumberId) {
+        const tenantNumber = await prisma.tenantNumber.findFirst({
+          where: { id: defaultFromNumberId, tenantId },
+        });
+        if (!tenantNumber) {
+          return res.status(400).json({ error: 'Invalid defaultFromNumberId: number does not belong to this tenant' });
+        }
+      }
       updateData.defaultFromNumberId = defaultFromNumberId || null;
     }
     

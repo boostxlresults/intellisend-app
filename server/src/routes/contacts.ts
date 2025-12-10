@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import Papa from 'papaparse';
 import { prisma } from '../index';
 
 const router = Router();
@@ -108,30 +109,8 @@ router.post('/:tenantId/contacts', async (req, res) => {
   }
 });
 
-function parseCSV(csvText: string): Record<string, string>[] {
-  const lines = csvText.trim().split('\n');
-  if (lines.length < 2) return [];
-  
-  const headerLine = lines[0];
-  const headers = headerLine.split(',').map(h => h.trim().toLowerCase());
-  
-  const results: Record<string, string>[] = [];
-  
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    
-    const values = line.split(',').map(v => v.trim());
-    const row: Record<string, string> = {};
-    
-    headers.forEach((header, idx) => {
-      row[header] = values[idx] || '';
-    });
-    
-    results.push(row);
-  }
-  
-  return results;
+function normalizeHeader(header: string): string {
+  return header.trim().toLowerCase().replace(/[_\s-]+/g, '');
 }
 
 router.post('/:tenantId/contacts/import', upload.single('file'), async (req, res) => {
@@ -145,17 +124,32 @@ router.post('/:tenantId/contacts/import', upload.single('file'), async (req, res
     
     if (req.file) {
       const csvText = req.file.buffer.toString('utf-8');
-      const rows = parseCSV(csvText);
       
-      contactsData = rows.map(row => ({
-        phone: row.phone || row.phonenumber || row.phone_number || '',
-        firstName: row.firstname || row.first_name || row.first || 'Unknown',
-        lastName: row.lastname || row.last_name || row.last || 'Contact',
+      const parseResult = Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header: string) => normalizeHeader(header),
+      });
+      
+      if (parseResult.errors.length > 0) {
+        const criticalErrors = parseResult.errors.filter(e => e.type === 'Delimiter' || e.type === 'Quotes');
+        if (criticalErrors.length > 0) {
+          return res.status(400).json({ 
+            error: 'CSV parsing error', 
+            details: criticalErrors.slice(0, 5).map(e => e.message) 
+          });
+        }
+      }
+      
+      contactsData = parseResult.data.map((row: any) => ({
+        phone: row.phone || row.phonenumber || '',
+        firstName: row.firstname || row.first || 'Unknown',
+        lastName: row.lastname || row.last || 'Contact',
         email: row.email || undefined,
         address: row.address || undefined,
         city: row.city || undefined,
         state: row.state || undefined,
-        zip: row.zip || row.zipcode || row.zip_code || undefined,
+        zip: row.zip || row.zipcode || undefined,
         tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
       }));
     } else if (req.body.contacts) {
