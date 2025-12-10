@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index';
+import { timeStringToMinutes, minutesToTimeString } from '../services/tenantSettings';
 
 const router = Router();
 
@@ -43,6 +44,15 @@ router.post('/', async (req, res) => {
       },
     });
     
+    await prisma.tenantSettings.create({
+      data: {
+        tenantId: tenant.id,
+        timezone: 'America/Phoenix',
+        quietHoursStart: 20 * 60,
+        quietHoursEnd: 8 * 60,
+      },
+    });
+    
     res.status(201).json(tenant);
   } catch (error: any) {
     console.error('Error creating tenant:', error);
@@ -68,6 +78,89 @@ router.get('/:tenantId', async (req, res) => {
     res.json(tenant);
   } catch (error: any) {
     console.error('Error fetching tenant:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:tenantId/settings', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    let settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      include: { defaultFromNumber: true },
+    });
+    
+    if (!settings) {
+      settings = await prisma.tenantSettings.create({
+        data: {
+          tenantId,
+          timezone: 'America/Phoenix',
+          quietHoursStart: 20 * 60,
+          quietHoursEnd: 8 * 60,
+        },
+        include: { defaultFromNumber: true },
+      });
+    }
+    
+    res.json({
+      ...settings,
+      quietHoursStartFormatted: minutesToTimeString(settings.quietHoursStart),
+      quietHoursEndFormatted: minutesToTimeString(settings.quietHoursEnd),
+    });
+  } catch (error: any) {
+    console.error('Error fetching tenant settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/settings', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { timezone, quietHoursStart, quietHoursEnd, defaultFromNumberId } = req.body;
+    
+    const updateData: any = {};
+    
+    if (timezone !== undefined) {
+      updateData.timezone = timezone;
+    }
+    
+    if (quietHoursStart !== undefined) {
+      updateData.quietHoursStart = typeof quietHoursStart === 'string' 
+        ? timeStringToMinutes(quietHoursStart) 
+        : quietHoursStart;
+    }
+    
+    if (quietHoursEnd !== undefined) {
+      updateData.quietHoursEnd = typeof quietHoursEnd === 'string' 
+        ? timeStringToMinutes(quietHoursEnd) 
+        : quietHoursEnd;
+    }
+    
+    if (defaultFromNumberId !== undefined) {
+      updateData.defaultFromNumberId = defaultFromNumberId || null;
+    }
+    
+    const settings = await prisma.tenantSettings.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        timezone: updateData.timezone || 'America/Phoenix',
+        quietHoursStart: updateData.quietHoursStart ?? 20 * 60,
+        quietHoursEnd: updateData.quietHoursEnd ?? 8 * 60,
+        defaultFromNumberId: updateData.defaultFromNumberId,
+      },
+      update: updateData,
+      include: { defaultFromNumber: true },
+    });
+    
+    res.json({
+      ...settings,
+      quietHoursStartFormatted: minutesToTimeString(settings.quietHoursStart),
+      quietHoursEndFormatted: minutesToTimeString(settings.quietHoursEnd),
+    });
+  } catch (error: any) {
+    console.error('Error updating tenant settings:', error);
     res.status(500).json({ error: error.message });
   }
 });

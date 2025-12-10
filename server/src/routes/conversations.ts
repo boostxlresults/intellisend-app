@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../index';
 import { sendSmsForTenant } from '../twilio/twilioClient';
 import { suggestRepliesForInboundMessage } from '../ai/aiEngine';
+import { getTenantSendContext, isWithinQuietHours } from '../services/tenantSettings';
 
 const router = Router();
 
@@ -107,23 +108,20 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
       });
     }
     
-    let senderNumber = fromNumber;
-    if (!senderNumber) {
-      const defaultNumber = await prisma.tenantNumber.findFirst({
-        where: { tenantId, isDefault: true },
-      });
-      if (!defaultNumber) {
-        const anyNumber = await prisma.tenantNumber.findFirst({
-          where: { tenantId },
-        });
-        if (!anyNumber) {
-          return res.status(400).json({ error: 'No phone number configured for tenant' });
-        }
-        senderNumber = anyNumber.phoneNumber;
-      } else {
-        senderNumber = defaultNumber.phoneNumber;
-      }
+    const sendContext = await getTenantSendContext(tenantId);
+    
+    if (!sendContext) {
+      return res.status(400).json({ error: 'No phone number configured for tenant' });
     }
+    
+    if (isWithinQuietHours(new Date(), sendContext.timezone, sendContext.quietHoursStart, sendContext.quietHoursEnd)) {
+      return res.status(400).json({
+        error: 'Cannot send SMS during quiet hours for this tenant.',
+        quietHours: true,
+      });
+    }
+    
+    const senderNumber = fromNumber || sendContext.fromNumber;
     
     const smsResult = await sendSmsForTenant({
       tenantId,

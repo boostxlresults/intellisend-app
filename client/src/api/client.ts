@@ -122,6 +122,18 @@ export interface AiPersona {
   canAutoReply: boolean;
 }
 
+export interface TenantSettings {
+  id: string;
+  tenantId: string;
+  timezone: string;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+  defaultFromNumberId?: string;
+  defaultFromNumber?: TenantNumber;
+  quietHoursStartFormatted: string;
+  quietHoursEndFormatted: string;
+}
+
 export interface KBArticle {
   id: string;
   tenantId: string;
@@ -166,6 +178,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  
+  getTenantSettings: (tenantId: string) =>
+    request<TenantSettings>(`${API_BASE}/tenants/${tenantId}/settings`),
+  
+  updateTenantSettings: (tenantId: string, data: Partial<TenantSettings>) =>
+    request<TenantSettings>(`${API_BASE}/tenants/${tenantId}/settings`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  importContactsCSV: async (tenantId: string, file: File, globalTags: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('globalTags', globalTags);
+    
+    const response = await fetch(`${API_BASE}/tenants/${tenantId}/contacts/import`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    
+    return response.json() as Promise<{ imported: number; failed: number; total: number }>;
+  },
   
   getContacts: (tenantId: string, params?: { tag?: string; search?: string; page?: number }) => {
     const query = new URLSearchParams();

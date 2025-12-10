@@ -1,6 +1,7 @@
 import { prisma } from '../index';
 import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
 import { generateImprovedMessage } from '../ai/aiEngine';
+import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 
 const SCHEDULER_INTERVAL_MS = 60000;
 
@@ -12,22 +13,6 @@ export function startCampaignScheduler() {
   }, SCHEDULER_INTERVAL_MS);
   
   processScheduledCampaigns();
-}
-
-async function getTenantFromNumber(tenantId: string): Promise<string | null> {
-  const defaultNumber = await prisma.tenantNumber.findFirst({
-    where: { tenantId, isDefault: true },
-  });
-  
-  if (defaultNumber) {
-    return defaultNumber.phoneNumber;
-  }
-  
-  const anyNumber = await prisma.tenantNumber.findFirst({
-    where: { tenantId },
-  });
-  
-  return anyNumber?.phoneNumber || null;
 }
 
 async function processScheduledCampaigns() {
@@ -58,6 +43,22 @@ async function processScheduledCampaigns() {
     for (const campaign of scheduledCampaigns) {
       console.log(`Processing campaign: ${campaign.name} (${campaign.id})`);
       
+      const sendContext = await getTenantSendContext(campaign.tenantId);
+      
+      if (!sendContext) {
+        console.warn(`No phone number configured for tenant ${campaign.tenantId} - pausing campaign`);
+        await prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { status: 'PAUSED' },
+        });
+        continue;
+      }
+      
+      if (isWithinQuietHours(now, sendContext.timezone, sendContext.quietHoursStart, sendContext.quietHoursEnd)) {
+        console.log(`Quiet hours active for tenant ${campaign.tenantId} (${sendContext.timezone}), skipping sends this run`);
+        continue;
+      }
+      
       await prisma.campaign.update({
         where: { id: campaign.id },
         data: { status: 'RUNNING' },
@@ -68,17 +69,6 @@ async function processScheduledCampaigns() {
         await prisma.campaign.update({
           where: { id: campaign.id },
           data: { status: 'COMPLETED' },
-        });
-        continue;
-      }
-      
-      const fromNumber = await getTenantFromNumber(campaign.tenantId);
-      
-      if (!fromNumber) {
-        console.warn(`No phone number configured for tenant ${campaign.tenantId} - pausing campaign`);
-        await prisma.campaign.update({
-          where: { id: campaign.id },
-          data: { status: 'PAUSED' },
         });
         continue;
       }
@@ -161,7 +151,7 @@ async function processScheduledCampaigns() {
           
           const smsResult = await sendSmsForTenant({
             tenantId: campaign.tenantId,
-            fromNumber,
+            fromNumber: sendContext.fromNumber,
             toNumber: contact.phone,
             body: messageBody,
           });
@@ -179,7 +169,7 @@ async function processScheduledCampaigns() {
               direction: 'OUTBOUND',
               channel: 'SMS',
               body: messageBody,
-              fromNumber,
+              fromNumber: sendContext.fromNumber,
               toNumber: contact.phone,
               twilioMessageSid: smsResult.messageSid,
               status: smsResult.success ? 'sent' : 'failed',

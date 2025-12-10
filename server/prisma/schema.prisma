@@ -28,6 +28,21 @@ model Tenant {
   messages         Message[]
   aiPersonas       AiPersona[]
   knowledgeArticles KnowledgeBaseArticle[]
+  settings         TenantSettings?
+}
+
+model TenantSettings {
+  id                  String   @id @default(uuid())
+  tenantId            String   @unique
+  timezone            String   @default("America/Phoenix")
+  quietHoursStart     Int      @default(1200)
+  quietHoursEnd       Int      @default(480)
+  defaultFromNumberId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultFromNumber TenantNumber? @relation(fields: [defaultFromNumberId], references: [id], onDelete: SetNull)
 }
 
 model TenantNumber {
@@ -38,7 +53,8 @@ model TenantNumber {
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  settings TenantSettings[]
 
   @@index([phoneNumber])
 }

@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { prisma } from '../index';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.get('/:tenantId/contacts', async (req, res) => {
   try {
@@ -106,23 +108,112 @@ router.post('/:tenantId/contacts', async (req, res) => {
   }
 });
 
-router.post('/:tenantId/contacts/import', async (req, res) => {
+function parseCSV(csvText: string): Record<string, string>[] {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return [];
+  
+  const headerLine = lines[0];
+  const headers = headerLine.split(',').map(h => h.trim().toLowerCase());
+  
+  const results: Record<string, string>[] = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const values = line.split(',').map(v => v.trim());
+    const row: Record<string, string> = {};
+    
+    headers.forEach((header, idx) => {
+      row[header] = values[idx] || '';
+    });
+    
+    results.push(row);
+  }
+  
+  return results;
+}
+
+router.post('/:tenantId/contacts/import', upload.single('file'), async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { contacts } = req.body;
+    const globalTags = req.body.globalTags
+      ? (req.body.globalTags as string).split(',').map(t => t.trim()).filter(Boolean)
+      : [];
     
-    if (!Array.isArray(contacts)) {
-      return res.status(400).json({ error: 'contacts must be an array' });
+    let contactsData: any[] = [];
+    
+    if (req.file) {
+      const csvText = req.file.buffer.toString('utf-8');
+      const rows = parseCSV(csvText);
+      
+      contactsData = rows.map(row => ({
+        phone: row.phone || row.phonenumber || row.phone_number || '',
+        firstName: row.firstname || row.first_name || row.first || 'Unknown',
+        lastName: row.lastname || row.last_name || row.last || 'Contact',
+        email: row.email || undefined,
+        address: row.address || undefined,
+        city: row.city || undefined,
+        state: row.state || undefined,
+        zip: row.zip || row.zipcode || row.zip_code || undefined,
+        tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+      }));
+    } else if (req.body.contacts) {
+      contactsData = Array.isArray(req.body.contacts) 
+        ? req.body.contacts 
+        : JSON.parse(req.body.contacts);
+    } else {
+      return res.status(400).json({ error: 'No contacts data provided. Use CSV file or JSON array.' });
     }
     
-    const results = await Promise.all(
-      contacts.map(async (c: any) => {
-        try {
-          const contact = await prisma.contact.create({
+    let imported = 0;
+    let failed = 0;
+    const errors: { phone: string; error: string }[] = [];
+    
+    for (const c of contactsData) {
+      if (!c.phone) {
+        failed++;
+        errors.push({ phone: 'unknown', error: 'Phone number is required' });
+        continue;
+      }
+      
+      try {
+        const allTags = [...(c.tags || []), ...globalTags];
+        const uniqueTags = [...new Set(allTags)];
+        
+        const existing = await prisma.contact.findFirst({
+          where: { tenantId, phone: c.phone },
+          include: { tags: true },
+        });
+        
+        if (existing) {
+          await prisma.contact.update({
+            where: { id: existing.id },
+            data: {
+              firstName: c.firstName || existing.firstName,
+              lastName: c.lastName || existing.lastName,
+              email: c.email || existing.email,
+              address: c.address || existing.address,
+              city: c.city || existing.city,
+              state: c.state || existing.state,
+              zip: c.zip || existing.zip,
+            },
+          });
+          
+          const existingTagNames = existing.tags.map(t => t.tag);
+          const newTags = uniqueTags.filter(t => !existingTagNames.includes(t));
+          
+          if (newTags.length > 0) {
+            await prisma.contactTag.createMany({
+              data: newTags.map(tag => ({ contactId: existing.id, tag })),
+            });
+          }
+        } else {
+          await prisma.contact.create({
             data: {
               tenantId,
-              firstName: c.firstName,
-              lastName: c.lastName,
+              firstName: c.firstName || 'Unknown',
+              lastName: c.lastName || 'Contact',
               phone: c.phone,
               email: c.email,
               address: c.address,
@@ -131,27 +222,27 @@ router.post('/:tenantId/contacts/import', async (req, res) => {
               zip: c.zip,
               leadSource: c.leadSource,
               customerType: c.customerType || 'LEAD',
-              consentSource: c.consentSource,
-              consentTimestamp: c.consentSource ? new Date() : null,
-              tags: c.tags ? {
-                create: c.tags.map((tag: string) => ({ tag })),
+              consentSource: c.consentSource || 'import',
+              consentTimestamp: new Date(),
+              tags: uniqueTags.length > 0 ? {
+                create: uniqueTags.map(tag => ({ tag })),
               } : undefined,
             },
           });
-          return { success: true, contact };
-        } catch (err: any) {
-          return { success: false, error: err.message, input: c };
         }
-      })
-    );
-    
-    const successful = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
+        
+        imported++;
+      } catch (err: any) {
+        failed++;
+        errors.push({ phone: c.phone, error: err.message });
+      }
+    }
     
     res.json({
-      imported: successful,
+      imported,
       failed,
-      results,
+      total: contactsData.length,
+      errors: errors.slice(0, 10),
     });
   } catch (error: any) {
     console.error('Error importing contacts:', error);

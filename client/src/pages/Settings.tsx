@@ -1,30 +1,44 @@
 import { useState, useEffect } from 'react';
 import { useTenant } from '../context/TenantContext';
-import { api, TenantNumber, Suppression, AiPersona } from '../api/client';
+import { api, TenantNumber, Suppression, AiPersona, TenantSettings } from '../api/client';
+
+const TIMEZONES = [
+  'America/Phoenix',
+  'America/Los_Angeles',
+  'America/Denver',
+  'America/Chicago',
+  'America/New_York',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+];
 
 export default function Settings() {
   const { selectedTenant, refreshTenants } = useTenant();
   const [numbers, setNumbers] = useState<TenantNumber[]>([]);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
   const [personas, setPersonas] = useState<AiPersona[]>([]);
+  const [tenantSettings, setTenantSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddNumber, setShowAddNumber] = useState(false);
   const [showAddSuppression, setShowAddSuppression] = useState(false);
   const [showAddPersona, setShowAddPersona] = useState(false);
   const [showAddTenant, setShowAddTenant] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const fetchData = async () => {
     if (!selectedTenant) return;
     setLoading(true);
     try {
-      const [nums, supps, pers] = await Promise.all([
+      const [nums, supps, pers, settings] = await Promise.all([
         api.getTenantNumbers(selectedTenant.id),
         api.getSuppressions(selectedTenant.id),
         api.getAiPersonas(selectedTenant.id),
+        api.getTenantSettings(selectedTenant.id),
       ]);
       setNumbers(nums);
       setSuppressions(supps);
       setPersonas(pers);
+      setTenantSettings(settings);
     } catch (error) {
       console.error('Failed to fetch settings:', error);
     } finally {
@@ -35,6 +49,28 @@ export default function Settings() {
   useEffect(() => {
     fetchData();
   }, [selectedTenant]);
+
+  const handleSaveSettings = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedTenant || !tenantSettings) return;
+    setSavingSettings(true);
+    const formData = new FormData(e.currentTarget);
+    try {
+      const updated = await api.updateTenantSettings(selectedTenant.id, {
+        timezone: formData.get('timezone') as string,
+        quietHoursStart: formData.get('quietHoursStart') as unknown as number,
+        quietHoursEnd: formData.get('quietHoursEnd') as unknown as number,
+        defaultFromNumberId: formData.get('defaultFromNumberId') as string || undefined,
+      });
+      setTenantSettings(updated);
+      alert('Settings saved successfully!');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to save settings: ' + message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const handleAddNumber = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -123,6 +159,63 @@ export default function Settings() {
         <p>Loading settings...</p>
       ) : (
         <>
+          <div className="card">
+            <h3 style={{ marginBottom: '16px' }}>Tenant Settings</h3>
+            <form onSubmit={handleSaveSettings}>
+              <div className="form-group">
+                <label>Timezone</label>
+                <select 
+                  name="timezone" 
+                  defaultValue={tenantSettings?.timezone || 'America/Phoenix'}
+                  style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }}
+                >
+                  {TIMEZONES.map(tz => (
+                    <option key={tz} value={tz}>{tz}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Quiet Hours Start (24h)</label>
+                  <input 
+                    type="time" 
+                    name="quietHoursStart" 
+                    defaultValue={tenantSettings?.quietHoursStartFormatted || '20:00'}
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Quiet Hours End (24h)</label>
+                  <input 
+                    type="time" 
+                    name="quietHoursEnd" 
+                    defaultValue={tenantSettings?.quietHoursEndFormatted || '08:00'}
+                  />
+                </div>
+              </div>
+              <p style={{ fontSize: '12px', color: '#718096', marginBottom: '16px' }}>
+                No outbound SMS will be sent during quiet hours (overnight). For 8pm-8am, set Start=20:00 and End=08:00.
+              </p>
+              <div className="form-group">
+                <label>Default From Number</label>
+                <select 
+                  name="defaultFromNumberId"
+                  defaultValue={tenantSettings?.defaultFromNumberId || ''}
+                  style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }}
+                >
+                  <option value="">Use tenant default or any available</option>
+                  {numbers.map(num => (
+                    <option key={num.id} value={num.id}>
+                      {num.phoneNumber} {num.label ? `(${num.label})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={savingSettings}>
+                {savingSettings ? 'Saving...' : 'Save Settings'}
+              </button>
+            </form>
+          </div>
+
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3>Phone Numbers</h3>

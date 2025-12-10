@@ -1,0 +1,165 @@
+Amazing work so far – the core of IntelliSend looks production-ready from a Twilio and compliance perspective. Now I want to move into tenant-level settings and better contact import, so we can actually run smart segmented campaigns (e.g., solar customers, NW Tucson, etc.) safely and at scale.
+
+Please implement the following features.
+
+====================================
+1) TENANT SETTINGS (TIMEZONE + QUIET HOURS)
+====================================
+
+We want each Tenant to have:
+
+- A timezone (e.g., "America/Phoenix").
+- Quiet hours for outbound SMS (e.g., no marketing texts before 08:00 or after 20:00 local time).
+- A defaultFromNumberId referencing TenantNumber, so we can choose the primary sender when multiple numbers exist.
+
+Step 1 – Schema
+
+Update the Prisma schema:
+
+- Add a new model TenantSettings OR extend Tenant directly. I prefer a separate TenantSettings model for clarity:
+
+  model TenantSettings {
+    id                String   @id @default(uuid())
+    tenantId          String   @unique
+    timezone          String   // e.g. "America/Phoenix"
+    quietHoursStart   Int      // minutes since midnight, e.g. 20 * 60 for 8pm
+    quietHoursEnd     Int      // minutes since midnight, e.g. 8 * 60 for 8am
+    defaultFromNumberId String? // FK to TenantNumber.id, nullable
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    defaultFromNumber TenantNumber? @relation(fields: [defaultFromNumberId], references: [id], onDelete: SetNull)
+  }
+
+- Run `npx prisma db push` to apply changes.
+
+Step 2 – Backend logic
+
+Create a service helper, e.g. `getTenantSendContext(tenantId: string)` that:
+
+- Loads TenantSettings for that tenant.
+- If `defaultFromNumberId` is set, use that TenantNumber.
+- Else, fall back to the existing logic that chooses default TenantNumber or any TenantNumber.
+- Returns an object like:
+
+  {
+    fromNumber: string;        // chosen phone number
+    timezone: string;          // tenant timezone
+    quietHoursStart: number;   // minutes since midnight
+    quietHoursEnd: number;     // minutes since midnight
+  }
+
+Implement a utility like `isWithinQuietHours(now: Date, timezone: string, quietHoursStart: number, quietHoursEnd: number): boolean` that:
+
+- Converts `now` into the tenant’s local time.
+- Computes minutes since midnight.
+- Returns true if the current local minutes are INSIDE the quiet hours window.
+- Be careful: quietHoursStart may be > quietHoursEnd (e.g., 20:00–08:00 overnight).
+
+You can use a simple library like `luxon` or `date-fns-tz` for timezone handling if needed; or for now, assume system timezone is correct and just compare hours, with clear TODO comments.
+
+Step 3 – Enforcement
+
+a) Campaign scheduler
+
+- In `processScheduledCampaigns`, before sending to a contact, call `getTenantSendContext(campaign.tenantId)` and `isWithinQuietHours(...)`.
+- If inside quiet hours, SKIP sending that message for now and log something like:
+
+  `console.log("Quiet hours active for tenant X, skipping sends this run");`
+
+- Do *not* mark the campaign completed if all messages are skipped due to quiet hours; instead, let the scheduler pick it up on the next run when local time is allowed.
+
+b) Manual send (conversations route)
+
+- In `conversations` route where an agent sends an outbound message, also call `getTenantSendContext` and `isWithinQuietHours`.
+- If within quiet hours:
+  - Return a 400-level response with a clear error JSON: `{ error: "Cannot send SMS during quiet hours for this tenant." }`
+  - For future UX, we can introduce an override, but for now hard-block sends during quiet hours.
+
+This gives us a basic but important compliance and user-experience guardrail.
+
+====================================
+2) TENANT SETTINGS API + SIMPLE UI
+====================================
+
+Backend:
+
+- Add routes:
+
+  - `GET /api/tenants/:tenantId/settings` – return TenantSettings (create with sensible defaults if missing).
+  - `POST /api/tenants/:tenantId/settings` – update timezone, quietHoursStart, quietHoursEnd, and defaultFromNumberId.
+
+Frontend:
+
+- In the Settings page for a tenant, add a "Tenant Settings" section:
+
+  - Dropdown for timezone (for now, a simple text input or a small hard-coded list like ["America/Phoenix"] is fine).
+  - Inputs for quiet hours:
+    - "Quiet hours start" and "Quiet hours end" in HH:MM (24h).
+  - Dropdown for default from number, populated from that tenant’s numbers.
+
+- On save, call the new `/settings` API to persist changes.
+
+We don’t need fancy validation yet, but please convert HH:MM to minutes since midnight on the backend.
+
+====================================
+3) IMPROVED CONTACT IMPORT (CSV + TAGS)
+====================================
+
+Right now import is JSON-based. Let’s make it more usable:
+
+Backend:
+
+- Update `POST /api/tenants/:tenantId/contacts/import` to accept:
+  - Either JSON as today, OR
+  - `multipart/form-data` with:
+    - `file` (CSV)
+    - optional `globalTags` (comma-separated string)
+
+- For CSV:
+  - Expect a header row.
+  - Support mapping for columns:
+    - `phone` (required)
+    - `firstName`
+    - `lastName`
+    - `email`
+    - `address`
+    - `city`
+    - `state`
+    - `zip`
+    - `tags` (comma-separated tags for that row)
+  - For now, you can assume standard comma-separated CSV without advanced quoting.
+
+- For each row:
+  - Create or update Contact (by tenantId + phone).
+  - Apply row-level tags from the `tags` column (if present).
+  - Apply globalTags to every imported contact, if provided.
+
+Frontend:
+
+- In the Contacts page (or a dedicated "Import" subpage), add a simple CSV import UI for the selected tenant:
+  - File upload input.
+  - Text input: "Apply tags to all contacts in this file" (comma-separated).
+  - Brief description of expected columns (phone is required, others optional).
+  - On submit, send as `multipart/form-data` to the import endpoint.
+
+We don’t need fancy column mapping UI yet; just support the expected column names.
+
+====================================
+4) SHOW UPDATED FILES
+====================================
+
+After implementing all of the above:
+
+- Run `npx prisma db push` to apply schema changes.
+- Restart the backend.
+- Then print the updated contents of these files so I can review them:
+
+  - server/prisma/schema.prisma
+  - server/src/services/campaignScheduler.ts
+  - server/src/routes/conversations.ts
+  - server/src/services/tenantSettings.ts (or wherever you put getTenantSendContext/isWithinQuietHours)
+  - server/src/routes/tenants.ts (or the new settings route file)
+  - client/src/pages/Settings.tsx (or wherever the Tenant Settings UI lives)
+  - server/src/routes/contacts.ts (import logic)

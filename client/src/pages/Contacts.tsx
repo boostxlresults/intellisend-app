@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import { api, Contact } from '../api/client';
@@ -11,6 +11,11 @@ export default function Contacts() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [importJson, setImportJson] = useState('');
+  const [importMode, setImportMode] = useState<'json' | 'csv'>('csv');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [globalTags, setGlobalTags] = useState('');
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchContacts = async () => {
     if (!selectedTenant) return;
@@ -31,17 +36,32 @@ export default function Contacts() {
 
   const handleImport = async () => {
     if (!selectedTenant) return;
+    setImporting(true);
+    
     try {
-      const contactsData = JSON.parse(importJson);
-      const result = await api.importContacts(selectedTenant.id, contactsData);
+      let result;
+      
+      if (importMode === 'csv' && csvFile) {
+        result = await api.importContactsCSV(selectedTenant.id, csvFile, globalTags);
+      } else if (importMode === 'json' && importJson) {
+        const contactsData = JSON.parse(importJson);
+        result = await api.importContacts(selectedTenant.id, contactsData);
+      } else {
+        throw new Error('Please provide a CSV file or JSON data');
+      }
+      
       alert(`Imported ${result.imported} contacts. ${result.failed} failed.`);
       setShowImportModal(false);
       setImportJson('');
+      setCsvFile(null);
+      setGlobalTags('');
       fetchContacts();
       refreshTenants();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Import failed: ' + message);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -62,6 +82,13 @@ export default function Contacts() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Failed to add contact: ' + message);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCsvFile(file);
     }
   };
 
@@ -130,20 +157,85 @@ export default function Contacts() {
       
       {showImportModal && (
         <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <h3>Import Contacts</h3>
-            <p style={{ marginBottom: '16px', color: '#718096' }}>
-              Paste JSON array of contacts. Each contact should have firstName, lastName, phone, and optionally email, tags (array).
-            </p>
-            <textarea
-              value={importJson}
-              onChange={(e) => setImportJson(e.target.value)}
-              placeholder='[{"firstName": "John", "lastName": "Doe", "phone": "+15551234567", "tags": ["lead"]}]'
-              style={{ width: '100%', minHeight: '150px', marginBottom: '16px' }}
-            />
+            
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+              <button 
+                className={`btn ${importMode === 'csv' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setImportMode('csv')}
+              >
+                CSV File
+              </button>
+              <button 
+                className={`btn ${importMode === 'json' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setImportMode('json')}
+              >
+                JSON
+              </button>
+            </div>
+            
+            {importMode === 'csv' ? (
+              <>
+                <div className="form-group">
+                  <label>CSV File *</label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    style={{ padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', width: '100%' }}
+                  />
+                  {csvFile && (
+                    <p style={{ fontSize: '12px', color: '#38a169', marginTop: '4px' }}>
+                      Selected: {csvFile.name}
+                    </p>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label>Apply Tags to All (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={globalTags}
+                    onChange={(e) => setGlobalTags(e.target.value)}
+                    placeholder="e.g., solar, tucson, 2024-leads"
+                    style={{ padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', width: '100%' }}
+                  />
+                </div>
+                <div style={{ backgroundColor: '#f7fafc', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+                  <p style={{ fontWeight: '600', marginBottom: '8px' }}>Expected CSV Columns:</p>
+                  <p style={{ fontSize: '12px', color: '#718096' }}>
+                    <strong>Required:</strong> phone<br />
+                    <strong>Optional:</strong> firstName, lastName, email, address, city, state, zip, tags
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '8px' }}>
+                    The "tags" column can contain comma-separated tags for each contact.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ marginBottom: '16px', color: '#718096' }}>
+                  Paste JSON array of contacts. Each contact should have firstName, lastName, phone, and optionally email, tags (array).
+                </p>
+                <textarea
+                  value={importJson}
+                  onChange={(e) => setImportJson(e.target.value)}
+                  placeholder='[{"firstName": "John", "lastName": "Doe", "phone": "+15551234567", "tags": ["lead"]}]'
+                  style={{ width: '100%', minHeight: '150px', marginBottom: '16px' }}
+                />
+              </>
+            )}
+            
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleImport}>Import</button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleImport}
+                disabled={importing || (importMode === 'csv' && !csvFile) || (importMode === 'json' && !importJson)}
+              >
+                {importing ? 'Importing...' : 'Import'}
+              </button>
             </div>
           </div>
         </div>
