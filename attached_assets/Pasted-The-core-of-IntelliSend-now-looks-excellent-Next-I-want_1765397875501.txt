@@ -1,0 +1,198 @@
+The core of IntelliSend now looks excellent. Next, I want to upgrade the AI layer from a stub into a real multi-tenant, brand-aware assistant using OpenAI.
+
+Please implement the following changes and integrations.
+
+====================================
+1) OPENAI CLIENT SETUP
+====================================
+
+Backend:
+
+- Install the official OpenAI Node SDK.
+- Read `OPENAI_API_KEY` from environment variables.
+- In `server/src/ai/aiEngine.ts`, replace the current stubs with real implementations, but keep the same exported function signatures.
+
+Assumptions:
+
+- We'll use a GPT-style chat model (e.g., gpt-4.1-mini or similar) via the OpenAI client.
+- Add a small config at the top of aiEngine.ts like:
+
+  const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+
+====================================
+2) AI PERSONA + KNOWLEDGE BASE INTEGRATION
+====================================
+
+We already have:
+
+- AiPersona model (per tenant).
+- KnowledgeBaseArticle model (per tenant).
+
+Create helper functions in aiEngine.ts or a small service module:
+
+- `getActivePersonaForTenant(tenantId: string)`:
+  - For now, return the first AiPersona for that tenant.
+  - If none exists, return a default persona object with a generic system prompt.
+
+- `getKnowledgeSnippetsForTenant(tenantId: string, limit: number = 5)`:
+  - Fetch up to `limit` KnowledgeBaseArticle records for the tenant.
+  - For now, we can just order by createdAt DESC.
+  - Return them as an array of `{ title, topic, content }` snippets.
+
+Later we can add semantic search / embeddings, but this is fine for v1.
+
+====================================
+3) IMPLEMENT generateImprovedMessage()
+====================================
+
+Signature (existing):
+
+- `generateImprovedMessage(options)` currently returns a stub. Replace it with:
+
+Inputs (TypeScript interface to define):
+
+- tenantId: string
+- originalText: string
+- goal?: "higher_reply_rate" | "more_compliant" | "shorter" | "friendlier"
+
+Steps:
+
+1. Load the tenant’s active AI persona (`getActivePersonaForTenant`).
+2. Optionally load a few knowledge snippets (`getKnowledgeSnippetsForTenant`), in case they provide helpful grounding.
+3. Construct a chat completion request with:
+   - A system message that combines:
+     - The persona.systemPrompt (if present).
+     - A global rule set, for example:
+       - You are helping craft an outbound SMS for a home-services brand.
+       - Keep messages concise and under 320 characters when possible.
+       - Do not make unrealistic promises, especially about savings.
+       - Mention opt-out instructions only if the original text already includes them; do NOT invent legal boilerplate.
+   - A user message that describes the task, e.g.:
+
+     "Here is a draft SMS we plan to send. Rewrite it to [goal description: more compliant, higher reply rate, etc.] while preserving the core meaning. Output only the final SMS text, nothing else.\n\nDraft:\n{originalText}\n\nBrand context:\n{(optional) small summary of persona + knowledge snippet titles}"
+
+4. Call OpenAI and get the suggested text.
+5. Return `{ text: improvedText }`.
+
+Be sure to:
+
+- Trim the output.
+- Fallback to originalText if the OpenAI call fails (with logging).
+
+====================================
+4) IMPLEMENT suggestRepliesForInboundMessage()
+====================================
+
+Signature (existing):
+
+- `suggestRepliesForInboundMessage(options)` currently returns a stub.
+
+Expand it to:
+
+Input:
+
+- tenantId: string
+- personaId?: string
+- contactId: string
+- conversationId: string
+- lastUserMessage: string
+
+Steps:
+
+1. Load persona:
+   - If personaId is provided, load that specific AiPersona.
+   - Else use `getActivePersonaForTenant(tenantId)`.
+
+2. Load recent conversation context:
+   - Fetch the last 10 messages for that conversation, ordered ascending by createdAt.
+   - Build a short text transcript like:
+     - "User: ...", "Agent: ...", "User: ...", etc.
+   - Mark AI vs human messages if possible, but not strictly required yet.
+
+3. Load a few knowledge snippets for the tenant (e.g., 3 articles).
+
+4. Construct a chat completion request:
+
+   - System message example:
+
+     "You are the SMS assistant for a home-services brand in Tucson. You are continuing a text conversation with a homeowner. Stay friendly, concise, and focused on moving them toward either a booked appointment, a clear next step, or a positive closure. Never promise specific dollar savings or legal/financial guarantees. Keep responses under 320 characters."
+
+     Append persona.systemPrompt if present.
+
+   - Additional system or assistant context message that describes the knowledge snippets, e.g.:
+
+     "Context: The brand offers these services and information:\n- [title 1]: [short truncated content]\n- [title 2]: [short truncated content]\n..."
+
+   - User message describing the task:
+
+     "Here is the recent conversation transcript and the last user message. Propose 2-3 possible SMS replies as JSON array of strings, most likely to move the conversation forward in a helpful way."
+
+     Then include the transcript and last user message.
+
+5. Parse the model’s response:
+
+   - Expect the model to output a JSON array of strings, e.g.: `["reply 1", "reply 2", "reply 3"]`.
+   - If parsing fails, fall back to a single generic suggestion.
+
+6. Return an array of `{ text: string }` suggestions.
+
+====================================
+5) WIRE AI INTO EXISTING ENDPOINTS
+====================================
+
+a) Campaign creation / preview (AI-assist):
+
+- Find where `generateImprovedMessage` is currently used (likely in campaign routes or services).
+- Ensure the API exposes an endpoint for AI-assist on a single message template, something like:
+
+  - `POST /api/tenants/:tenantId/ai/preview-message`
+    - body: `{ text: string, goal?: string }`
+    - returns: `{ text: string }`
+
+- Connect this endpoint to `generateImprovedMessage`.
+- Update the React Campaigns page (or wherever the "Use AI Assist" button is) to call this endpoint and show the improved text before saving.
+
+b) Conversations – suggested replies:
+
+- Add a backend endpoint like:
+
+  - `POST /api/tenants/:tenantId/conversations/:conversationId/ai-suggestions`
+    - body: `{ contactId: string, personaId?: string, lastUserMessage: string }`
+    - returns: `{ suggestions: { text: string }[] }`
+
+- Implement this using `suggestRepliesForInboundMessage`.
+
+- On the frontend, in the ConversationDetail page:
+  - Add a button "AI Suggest Replies".
+  - When clicked, call the new endpoint.
+  - Show the suggestions below the message composer; clicking one should insert it into the text area.
+
+====================================
+6) ERROR HANDLING & ENV CONFIG
+====================================
+
+- In aiEngine.ts, if `OPENAI_API_KEY` is not set:
+  - Log a warning and return fallbacks (original text or a generic suggestion).
+  - Do NOT crash the server.
+
+- Wrap OpenAI calls in try/catch:
+  - Log errors with enough detail to debug (tenantId, operation type).
+  - Return safe fallbacks.
+
+====================================
+7) PRINT UPDATED FILES
+====================================
+
+After implementing all of the above:
+
+- Ensure the backend compiles and runs.
+- Then print the updated contents of:
+
+  - server/src/ai/aiEngine.ts
+  - server/src/routes/campaigns.ts (or whichever file wires the AI preview endpoint)
+  - server/src/routes/conversations.ts (for the AI suggestions endpoint)
+  - client/src/pages/Campaigns.tsx
+  - client/src/pages/ConversationDetail.tsx
+  - server/src/routes/aiPersonas.ts (if any changes were made there)
+
+So I can review and iterate on the prompts and behavior.
