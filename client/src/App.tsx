@@ -23,7 +23,10 @@ function App() {
     if (!newTenantName.trim()) return;
     setCreating(true);
     try {
-      const tenant = await api.createTenant({ publicName: newTenantName });
+      const tenant = await api.createTenant({ 
+        name: newTenantName.toLowerCase().replace(/\s+/g, '-'),
+        publicName: newTenantName 
+      });
       await refreshTenants();
       setSelectedTenant(tenant);
       setShowCreateModal(false);
