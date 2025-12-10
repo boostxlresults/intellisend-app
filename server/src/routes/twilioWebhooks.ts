@@ -1,9 +1,19 @@
 import { Router } from 'express';
 import { prisma } from '../index';
+import { validateTwilioSignature } from '../middleware/twilioSignature';
+import { sendSmsForTenant } from '../twilio/twilioClient';
 
 const router = Router();
 
-router.post('/inbound', async (req, res) => {
+const STOP_KEYWORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
+
+function isStopKeyword(body: string | undefined): boolean {
+  if (!body) return false;
+  const normalized = body.trim().toUpperCase();
+  return STOP_KEYWORDS.includes(normalized);
+}
+
+router.post('/inbound', validateTwilioSignature, async (req, res) => {
   try {
     const { From, To, Body, MessageSid } = req.body;
     
@@ -21,8 +31,9 @@ router.post('/inbound', async (req, res) => {
     }
     
     const tenantId = tenantNumber.tenantId;
+    const tenant = tenantNumber.tenant;
     
-    if (Body?.trim().toUpperCase() === 'STOP') {
+    if (isStopKeyword(Body)) {
       await prisma.suppression.upsert({
         where: {
           tenantId_phone: {
@@ -35,9 +46,22 @@ router.post('/inbound', async (req, res) => {
           phone: From,
           reason: 'STOP',
         },
-        update: {},
+        update: {
+          reason: 'STOP',
+        },
       });
-      console.log(`Contact ${From} opted out for tenant ${tenantId}`);
+      
+      console.log(`Contact ${From} opted out for tenant ${tenantId} (keyword: ${Body?.trim().toUpperCase()})`);
+      
+      const confirmationMessage = `You're unsubscribed from ${tenant.publicName} SMS. No more messages will be sent. Reply HELP for help.`;
+      
+      const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${confirmationMessage}</Message>
+</Response>`;
+      
+      res.type('text/xml').send(twimlResponse);
+      return;
     }
     
     let contact = await prisma.contact.findFirst({
@@ -112,7 +136,7 @@ router.post('/inbound', async (req, res) => {
   }
 });
 
-router.post('/status', async (req, res) => {
+router.post('/status', validateTwilioSignature, async (req, res) => {
   try {
     const { MessageSid, MessageStatus, ErrorCode } = req.body;
     

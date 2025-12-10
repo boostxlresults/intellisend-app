@@ -1,5 +1,5 @@
 import { prisma } from '../index';
-import { sendSmsForTenant } from '../twilio/twilioClient';
+import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
 import { generateImprovedMessage } from '../ai/aiEngine';
 
 const SCHEDULER_INTERVAL_MS = 60000;
@@ -61,9 +61,20 @@ async function processScheduledCampaigns() {
       });
       
       if (!defaultNumber) {
-        console.warn(`No default number for tenant ${campaign.tenantId}`);
-        continue;
+        const anyNumber = await prisma.tenantNumber.findFirst({
+          where: { tenantId: campaign.tenantId },
+        });
+        if (!anyNumber) {
+          console.warn(`No phone number configured for tenant ${campaign.tenantId}`);
+          await prisma.campaign.update({
+            where: { id: campaign.id },
+            data: { status: 'PAUSED' },
+          });
+          continue;
+        }
       }
+      
+      const fromNumber = defaultNumber?.phoneNumber || '';
       
       const firstStep = campaign.steps[0];
       if (!firstStep) {
@@ -75,19 +86,33 @@ async function processScheduledCampaigns() {
         continue;
       }
       
+      let sentCount = 0;
+      let suppressedCount = 0;
+      let failedCount = 0;
+      
       for (const member of campaign.segment.members) {
         const contact = member.contact;
         
         try {
-          const suppression = await prisma.suppression.findFirst({
+          const existingCampaignMessage = await prisma.message.findFirst({
             where: {
               tenantId: campaign.tenantId,
-              phone: contact.phone,
+              contactId: contact.id,
+              body: { contains: firstStep.bodyTemplate.substring(0, 50) },
+              createdAt: { gte: campaign.startAt || campaign.createdAt },
             },
           });
           
-          if (suppression) {
-            console.log(`Skipping suppressed contact ${contact.phone} (reason: ${suppression.reason})`);
+          if (existingCampaignMessage) {
+            console.log(`Skipping ${contact.phone}: already sent campaign message`);
+            continue;
+          }
+          
+          const isSuppressed = await checkSuppression(campaign.tenantId, contact.phone);
+          
+          if (isSuppressed) {
+            console.log(`SUPPRESSED: Skipping ${contact.phone} for campaign ${campaign.name}`);
+            suppressedCount++;
             continue;
           }
           
@@ -127,10 +152,15 @@ async function processScheduledCampaigns() {
           
           const smsResult = await sendSmsForTenant({
             tenantId: campaign.tenantId,
-            fromNumber: defaultNumber.phoneNumber,
+            fromNumber,
             toNumber: contact.phone,
             body: messageBody,
           });
+          
+          if (smsResult.suppressed) {
+            suppressedCount++;
+            continue;
+          }
           
           await prisma.message.create({
             data: {
@@ -140,7 +170,7 @@ async function processScheduledCampaigns() {
               direction: 'OUTBOUND',
               channel: 'SMS',
               body: messageBody,
-              fromNumber: defaultNumber.phoneNumber,
+              fromNumber,
               toNumber: contact.phone,
               twilioMessageSid: smsResult.messageSid,
               status: smsResult.success ? 'sent' : 'failed',
@@ -159,9 +189,16 @@ async function processScheduledCampaigns() {
             data: { lastContactedAt: new Date() },
           });
           
-          console.log(`Sent campaign message to ${contact.phone}`);
+          if (smsResult.success) {
+            sentCount++;
+            console.log(`Sent campaign message to ${contact.phone}`);
+          } else {
+            failedCount++;
+            console.error(`Failed to send to ${contact.phone}: ${smsResult.error}`);
+          }
         } catch (error: any) {
-          console.error(`Failed to send to ${contact.phone}:`, error.message);
+          failedCount++;
+          console.error(`Error processing ${contact.phone}:`, error.message);
         }
       }
       
@@ -170,7 +207,7 @@ async function processScheduledCampaigns() {
         data: { status: 'COMPLETED' },
       });
       
-      console.log(`Campaign ${campaign.name} completed`);
+      console.log(`Campaign ${campaign.name} completed: ${sentCount} sent, ${suppressedCount} suppressed, ${failedCount} failed`);
     }
   } catch (error: any) {
     console.error('Campaign scheduler error:', error.message);

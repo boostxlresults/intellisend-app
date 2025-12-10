@@ -90,6 +90,23 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
       return res.status(404).json({ error: 'Conversation not found' });
     }
     
+    const suppression = await prisma.suppression.findUnique({
+      where: {
+        tenantId_phone: {
+          tenantId,
+          phone: conversation.contact.phone,
+        },
+      },
+    });
+    
+    if (suppression) {
+      console.log(`BLOCKED: Attempted to send to suppressed contact ${conversation.contact.phone} (reason: ${suppression.reason})`);
+      return res.status(403).json({
+        error: `Cannot send to this contact - they have opted out (${suppression.reason})`,
+        suppressed: true,
+      });
+    }
+    
     let senderNumber = fromNumber;
     if (!senderNumber) {
       const defaultNumber = await prisma.tenantNumber.findFirst({

@@ -25,11 +25,14 @@ export interface SendSmsOptions {
   statusCallbackUrl?: string;
 }
 
-export async function sendSmsForTenant(options: SendSmsOptions): Promise<{
+export interface SendSmsResult {
   success: boolean;
   messageSid?: string;
   error?: string;
-}> {
+  suppressed?: boolean;
+}
+
+export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSmsResult> {
   try {
     const tenantNumber = await prisma.tenantNumber.findFirst({
       where: {
@@ -39,29 +42,34 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<{
     });
 
     if (!tenantNumber) {
+      console.error(`SECURITY: Attempted to send from ${options.fromNumber} which does not belong to tenant ${options.tenantId}`);
       return {
         success: false,
         error: `Phone number ${options.fromNumber} does not belong to tenant ${options.tenantId}`,
       };
     }
 
-    const suppression = await prisma.suppression.findFirst({
+    const suppression = await prisma.suppression.findUnique({
       where: {
-        tenantId: options.tenantId,
-        phone: options.toNumber,
+        tenantId_phone: {
+          tenantId: options.tenantId,
+          phone: options.toNumber,
+        },
       },
     });
 
     if (suppression) {
+      console.log(`SUPPRESSED: Not sending to ${options.toNumber} for tenant ${options.tenantId} (reason: ${suppression.reason})`);
       return {
         success: false,
+        suppressed: true,
         error: `Phone number ${options.toNumber} is suppressed: ${suppression.reason}`,
       };
     }
 
     const client = getClient();
     
-    const messageOptions: any = {
+    const messageOptions: Twilio.Twilio.MessageListInstanceCreateOptions = {
       to: options.toNumber,
       body: options.body,
       from: options.fromNumber,
@@ -77,14 +85,14 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<{
 
     const message = await client.messages.create(messageOptions);
 
-    console.log(`SMS sent successfully. SID: ${message.sid}`);
+    console.log(`SMS sent successfully. SID: ${message.sid}, From: ${options.fromNumber}, To: ${options.toNumber}`);
 
     return {
       success: true,
       messageSid: message.sid,
     };
   } catch (error: any) {
-    console.error('Failed to send SMS:', error.message);
+    console.error(`Failed to send SMS to ${options.toNumber}:`, error.message);
     return {
       success: false,
       error: error.message,
@@ -92,6 +100,22 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<{
   }
 }
 
+export async function checkSuppression(tenantId: string, phone: string): Promise<boolean> {
+  const suppression = await prisma.suppression.findUnique({
+    where: {
+      tenantId_phone: {
+        tenantId,
+        phone,
+      },
+    },
+  });
+  return !!suppression;
+}
+
 export function isTwilioConfigured(): boolean {
   return !!(accountSid && authToken);
+}
+
+export function getAuthToken(): string | undefined {
+  return authToken;
 }
