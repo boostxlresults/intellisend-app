@@ -1,0 +1,425 @@
+You are an expert full-stack engineer, Twilio SMS engineer, and backend architect.
+
+You are building a production-ready outbound SMS platform called **IntelliSend**.
+
+High-level goal:
+IntelliSend is a **multi-tenant** outbound SMS platform for home-services brands in Tucson, AZ, that integrates with Twilio Messaging Services and supports:
+- Contact list upload with tags
+- Audience segmentation
+- Campaigns and drip sequences
+- Two-way conversation inbox
+- Compliance (STOP, quiet hours, suppressions)
+- AI-assisted content creation
+- Per-tenant AI personas and knowledge bases
+- Eventually, AI auto-responses (but for now, we will just stub the AI layer)
+
+We will focus on a clean, well-structured backend + a minimal but functional dashboard UI that we can enhance later.
+
+====================================
+1. TECH STACK
+====================================
+
+**Backend**
+- Node.js + TypeScript
+- Express.js HTTP framework
+- PostgreSQL as the database
+- Prisma ORM for data modeling/migrations
+- Use dotenv for environment variables
+
+**Frontend**
+- React + TypeScript (Vite or CRA is fine)
+- Simple, clean admin-style UI (no need for design perfection yet)
+- Communicates with backend via REST API (JSON)
+
+**Other**
+- Twilio Node SDK
+- (Future) OpenAI Node SDK – for now, create an abstraction layer for AI calls but it can just return dummy values.
+
+====================================
+2. MULTI-TENANT CONCEPT
+====================================
+
+Each **tenant** represents a brand, e.g.:
+- Intelligent Design
+- Clean Water Tucson
+- Roofing Tucson
+- Solar Experts of Tucson
+
+Each tenant:
+- Has its own Twilio phone number(s) (already provisioned and assigned in Twilio to a single Messaging Service).
+- Has its own users (staff).
+- Has its own AI persona(s) and its own knowledge base.
+- Shares the same Twilio Messaging Service SID but uses its own From number.
+
+The app must be built from day one as multi-tenant:
+- Every contact, campaign, conversation, message, AI persona, etc. belongs to exactly one tenant.
+
+====================================
+3. DATABASE SCHEMA (Prisma)
+====================================
+
+Use Prisma with PostgreSQL. Define at least the following models (adjust field types as needed):
+
+- Tenant
+  - id (UUID)
+  - name (string)
+  - publicName (string)        // name shown in SMS content
+  - industry (string)
+  - websiteUrl (string)
+  - mainPhone (string)
+  - brandVoice (string)        // short description of tone
+  - createdAt
+  - updatedAt
+
+- TenantNumber
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - phoneNumber (string)       // E.164 format
+  - label (string)             // optional description
+  - isDefault (boolean)
+  - createdAt
+
+- User
+  - id (UUID)
+  - tenantId (FK -> Tenant, nullable if we later have “global/agency” users)
+  - email (string, unique)
+  - name (string)
+  - passwordHash (string)      // for now we can skip auth & stub
+  - role (enum: 'ADMIN', 'AGENT')
+  - createdAt
+  - updatedAt
+
+- Contact
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - firstName (string)
+  - lastName (string)
+  - phone (string, indexed)
+  - email (string?)
+  - address (string?)
+  - city (string?)
+  - state (string?)
+  - zip (string?)
+  - leadSource (string?)
+  - customerType (enum: 'LEAD', 'CUSTOMER', 'PAST_CUSTOMER', 'OTHER')
+  - consentSource (string?)    // e.g., “web_form”, “text_in”
+  - consentTimestamp (DateTime?)
+  - lastContactedAt (DateTime?)
+  - lastRepliedAt (DateTime?)
+  - createdAt
+  - updatedAt
+
+- ContactTag
+  - id (UUID)
+  - contactId (FK -> Contact)
+  - tag (string)               // e.g. 'solar_customer', '85741', 'monsoon_lead'
+
+- Suppression
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - phone (string, indexed)
+  - reason (string)            // e.g. 'STOP', 'complaint', 'manual'
+  - createdAt
+
+- Segment
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - name (string)
+  - type (enum: 'STATIC', 'DYNAMIC')
+  - definitionJson (string)    // JSON definition for dynamic segments (rule-based)
+  - createdAt
+  - updatedAt
+
+- SegmentMember (for static segments)
+  - id (UUID)
+  - segmentId (FK -> Segment)
+  - contactId (FK -> Contact)
+
+- Campaign
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - name (string)
+  - description (string?)
+  - type (enum: 'BLAST', 'DRIP')
+  - status (enum: 'DRAFT', 'SCHEDULED', 'RUNNING', 'PAUSED', 'COMPLETED')
+  - segmentId (FK -> Segment)  // primary audience
+  - createdAt
+  - updatedAt
+
+- CampaignStep
+  - id (UUID)
+  - campaignId (FK -> Campaign)
+  - order (int)
+  - delayMinutes (int)         // delay from campaign start or previous step
+  - bodyTemplate (string)      // text template e.g. "Hi {{firstName}} ..."
+  - useAiAssist (boolean)      // whether AI should refine the template
+  - createdAt
+
+- Conversation
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - contactId (FK -> Contact)
+  - status (enum: 'OPEN', 'CLOSED')
+  - lastMessageAt (DateTime)
+  - createdAt
+  - updatedAt
+
+- Message
+  - id (UUID)
+  - conversationId (FK -> Conversation)
+  - tenantId (FK -> Tenant)
+  - contactId (FK -> Contact)
+  - direction (enum: 'OUTBOUND', 'INBOUND')
+  - channel (enum: 'SMS')
+  - body (string)
+  - fromNumber (string)
+  - toNumber (string)
+  - twilioMessageSid (string?)
+  - status (string?)           // queued, sent, delivered, failed, etc. for outbound
+  - errorCode (string?)
+  - isAiGenerated (boolean)
+  - createdByUserId (FK -> User, nullable)
+  - createdAt
+
+- AiPersona
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - name (string)              // e.g. `Sales`, `Support`
+  - description (string)       // human-readable description of tone
+  - systemPrompt (string)      // long prompt used to control behavior
+  - canAutoReply (boolean)
+  - createdAt
+  - updatedAt
+
+- KnowledgeBaseArticle
+  - id (UUID)
+  - tenantId (FK -> Tenant)
+  - title (string)
+  - topic (string)
+  - content (string)           // plain text or markdown
+  - sourceType (string)        // 'manual', 'url_import', etc.
+  - sourceUrl (string?)
+  - createdAt
+  - updatedAt
+
+This schema is a strong starting point; feel free to make small adjustments if necessary, but keep the multi-tenant separation strict.
+
+====================================
+4. TWILIO INTEGRATION REQUIREMENTS
+====================================
+
+Assume:
+- We already have a Twilio Messaging Service SID available via env var: `TWILIO_MESSAGING_SERVICE_SID`.
+- All tenant phone numbers are part of that Messaging Service and are 10DLC registered.
+- The Messaging Service in Twilio is set to **Incoming Messages → Send a webhook** and will point to our backend.
+
+ENV variables to use:
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_MESSAGING_SERVICE_SID`
+- (later) `OPENAI_API_KEY` (for AI layer, can be stubbed initially)
+
+Backend Twilio adapter:
+
+Create a module `twilioClient.ts` that:
+- Exposes a function `sendSmsForTenant(options)` with:
+  - tenantId
+  - fromNumber      // must belong to that tenant
+  - toNumber
+  - body
+  - optional statusCallbackUrl (but default to our Messaging Service-level callback)
+- Uses Twilio’s Node SDK `client.messages.create` with:
+  - `messagingServiceSid: TWILIO_MESSAGING_SERVICE_SID`
+  - `from: fromNumber`
+  - `to: toNumber`
+  - `body: body`
+
+Webhooks (Express routes):
+
+1. `POST /webhooks/twilio/inbound`
+   - `Content-Type`: `application/x-www-form-urlencoded`
+   - Parse standard Twilio SMS fields: `From`, `To`, `Body`, `MessageSid`, etc.
+   - Find the **Tenant** by `To` number using `TenantNumber`.
+   - Find or create a **Contact** for `(tenantId, From)`.
+   - Find or create an **open Conversation** for `(tenantId, contactId)`.
+   - Insert a new `Message` with direction `INBOUND`.
+   - (For now) do *not* auto-reply, just log. We will later call the AI layer to generate suggestions.
+   - Respond with empty TwiML: `<Response></Response>`.
+
+2. `POST /webhooks/twilio/status`
+   - Parse `MessageSid`, `MessageStatus`, `ErrorCode`.
+   - Update the corresponding `Message` row by `twilioMessageSid`.
+   - Do not fail if no record is found; just log a warning.
+   - Return 200.
+
+Please structure these webhooks cleanly in separate route files.
+
+====================================
+5. AI LAYER (FOR NOW: STUB)
+====================================
+
+We want a clear abstraction for future AI integrations, but for now we can return dummy values so the rest of the system compiles and works.
+
+Create a module like `ai/aiEngine.ts` that exposes:
+
+- `generateImprovedMessage(options)`
+  - Inputs:
+    - tenantId
+    - personaId (optional)
+    - originalText
+    - goal (e.g. 'higher_reply_rate', 'more_compliant', 'shorter')
+  - Output (for now): `{ text: string }` (just returns the original text with a “[AI stub]” suffix or some slight modification).
+
+- `suggestRepliesForInboundMessage(options)`
+  - Inputs:
+    - tenantId
+    - personaId
+    - contactId
+    - conversationId
+    - lastUserMessage
+  - Output: `[{ text: string }]` (a small list of fake suggestions for now).
+
+Later, we will wire this to OpenAI and use per-tenant AiPersona + KnowledgeBaseArticle content. For now the goal is to keep all AI usage centralized so swapping in the real model is easy.
+
+====================================
+6. BACKEND API ENDPOINTS (MVP)
+====================================
+
+Build a REST API with the following minimal routes, all under `/api`:
+
+Tenants & numbers (for now no complex auth, can assume a single admin context):
+
+- `GET /api/tenants` – list tenants.
+- `POST /api/tenants` – create tenant (name, publicName, etc.).
+- `GET /api/tenants/:tenantId/numbers` – list TenantNumber.
+- `POST /api/tenants/:tenantId/numbers` – add TenantNumber (phoneNumber, label, isDefault).
+
+Contacts & tags:
+
+- `GET /api/tenants/:tenantId/contacts` – list with pagination + basic filters (tag, search).
+- `POST /api/tenants/:tenantId/contacts` – create contact.
+- `POST /api/tenants/:tenantId/contacts/import` – accept CSV upload (you can stub file upload and just accept JSON for now if easier).
+- `GET /api/tenants/:tenantId/contacts/:contactId` – get details including tags.
+- `POST /api/tenants/:tenantId/contacts/:contactId/tags` – add tag.
+- `DELETE /api/tenants/:tenantId/contacts/:contactId/tags/:tag` – remove tag.
+
+Segments:
+
+- `GET /api/tenants/:tenantId/segments`
+- `POST /api/tenants/:tenantId/segments` – create segment; for now support STATIC segments by accepting an array of contactIds.
+- (Dynamic segments can be added later; just design the Segment model to support it.)
+
+Campaigns:
+
+- `GET /api/tenants/:tenantId/campaigns`
+- `POST /api/tenants/:tenantId/campaigns` – create a Campaign with:
+  - `name`, `description`, `type`, `segmentId`, and an array of `steps` (for now, you can store steps separately).
+- `POST /api/tenants/:tenantId/campaigns/:campaignId/schedule` – mark as scheduled and store a `startAt` timestamp.
+- For now, implement a basic scheduler using `setInterval` / in-memory job runner to periodically check for due campaign steps and send messages via Twilio (with clear TODO comments so we can later move to a proper job queue).
+
+Conversations & messages:
+
+- `GET /api/tenants/:tenantId/conversations` – list with filters (status, search by phone).
+- `GET /api/tenants/:tenantId/conversations/:conversationId` – details + messages.
+- `POST /api/tenants/:tenantId/conversations/:conversationId/messages` – send a manual outbound message to that contact from a selected TenantNumber using Twilio; create a `Message` row and attach the Twilio SID.
+
+Suppressions:
+
+- `GET /api/tenants/:tenantId/suppressions`
+- `POST /api/tenants/:tenantId/suppressions` – create suppression for a phone number.
+- The sending logic (campaigns + direct messages) must always check that a phone is not suppressed before sending.
+
+Knowledge base & AI personas (data only for now):
+
+- `GET /api/tenants/:tenantId/ai-personas`
+- `POST /api/tenants/:tenantId/ai-personas` – create persona.
+- `GET /api/tenants/:tenantId/kb-articles`
+- `POST /api/tenants/:tenantId/kb-articles` – create article.
+
+====================================
+7. FRONTEND (REACT) – MINIMAL DASHBOARD
+====================================
+
+Build a simple React dashboard that hits the REST API and demonstrates the core flows:
+
+1. Tenant selector:
+   - A dropdown at the top to switch between tenants.
+   - Once a tenant is selected, all views are scoped to that tenant.
+
+2. Contacts view:
+   - List contacts for the selected tenant.
+   - Show name, phone, tags.
+   - Ability to click a contact to see details + tags + conversation link.
+
+3. Import contacts view (MVP):
+   - Simple form where user pastes JSON or a small CSV-like textarea (for now) to create multiple contacts with tags.
+   - Later we can add real file upload.
+
+4. Segments view:
+   - List segments.
+   - Create static segment by choosing contacts.
+
+5. Campaigns view:
+   - List campaigns.
+   - Create a simple blast campaign:
+     - Choose segment.
+     - Compose message.
+     - Check “Use AI assist” checkbox (for now call `generateImprovedMessage` stub and show the improved text).
+     - Schedule or send immediately.
+
+6. Conversations view:
+   - Show list of conversation threads for that tenant.
+   - Click conversation to see all messages (inbound/outbound).
+   - Text input at bottom to send a reply (via backend endpoint).
+   - For now, add a button “Suggest reply” that calls `suggestRepliesForInboundMessage` stub and shows the suggestions; user can click to insert.
+
+7. Knowledge base view:
+   - List KB articles for tenant.
+   - Form to add new article (title, topic, content).
+   - This doesn’t need to be fancy; just CRUD.
+
+We do NOT need polished styling; prioritize functionality and clear code structure.
+
+====================================
+8. NON-FUNCTIONAL REQUIREMENTS
+====================================
+
+- Use TypeScript end-to-end (backend and frontend).
+- Organize backend code with clear folders:
+  - `/src/routes`, `/src/services`, `/src/models` (Prisma), `/src/twilio`, `/src/ai`.
+- Add basic logging (console logs are fine).
+- Handle errors gracefully:
+  - Use `try/catch` in API routes.
+  - Return proper HTTP status codes and JSON error objects.
+- Avoid blocking operations in webhooks:
+  - Twilio webhooks should respond quickly; any heavy work (like campaign scheduling) should be deferred or kept light.
+
+====================================
+9. INITIAL DELIVERABLE
+====================================
+
+For the first version, please:
+
+1. Set up the backend project with:
+   - Express + TypeScript
+   - Prisma + PostgreSQL
+   - Twilio client configuration
+   - All models defined and migrated
+   - The two Twilio webhooks implemented
+   - Basic REST endpoints for:
+     - Tenants
+     - TenantNumbers
+     - Contacts (+tags)
+     - Conversations + Messages
+     - Suppressions
+2. Set up a minimal React dashboard:
+   - Tenant selector
+   - Contact list + detail
+   - Conversations view (read only is okay for v0; if possible, include sendMessage).
+3. Include clear README instructions:
+   - How to run backend
+   - How to set required env vars
+   - How to run frontend
+   - Any TODOs or limitations for the next phase
+
+The code must be clean, modular, and easy to extend. Do not over-optimize; build a solid, understandable foundation that we can iterate on.
