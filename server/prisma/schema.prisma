@@ -118,8 +118,8 @@ model Suppression {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, phone])
   @@index([phone])
-  @@index([tenantId, phone])
 }
 
 enum SegmentType {

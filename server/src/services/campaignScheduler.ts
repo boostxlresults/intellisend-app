@@ -79,6 +79,18 @@ async function processScheduledCampaigns() {
         const contact = member.contact;
         
         try {
+          const suppression = await prisma.suppression.findFirst({
+            where: {
+              tenantId: campaign.tenantId,
+              phone: contact.phone,
+            },
+          });
+          
+          if (suppression) {
+            console.log(`Skipping suppressed contact ${contact.phone} (reason: ${suppression.reason})`);
+            continue;
+          }
+          
           let messageBody = firstStep.bodyTemplate;
           
           messageBody = messageBody

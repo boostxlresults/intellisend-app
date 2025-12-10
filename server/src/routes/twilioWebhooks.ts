@@ -25,7 +25,10 @@ router.post('/inbound', async (req, res) => {
     if (Body?.trim().toUpperCase() === 'STOP') {
       await prisma.suppression.upsert({
         where: {
-          id: `${tenantId}-${From}`,
+          tenantId_phone: {
+            tenantId,
+            phone: From,
+          },
         },
         create: {
           tenantId,
