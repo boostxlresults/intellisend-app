@@ -138,16 +138,44 @@ router.post('/:tenantId/campaigns/ai-improve', async (req, res) => {
       return res.status(400).json({ error: 'text is required' });
     }
     
+    const validGoals = ['higher_reply_rate', 'more_compliant', 'shorter', 'friendlier'];
+    const goalValue = validGoals.includes(goal) ? goal : 'higher_reply_rate';
+    
     const result = await generateImprovedMessage({
       tenantId,
       personaId,
       originalText: text,
-      goal,
+      goal: goalValue,
     });
     
     res.json(result);
   } catch (error: any) {
     console.error('Error improving message:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/ai/preview-message', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { text, goal } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+    
+    const validGoals = ['higher_reply_rate', 'more_compliant', 'shorter', 'friendlier'];
+    const goalValue = validGoals.includes(goal) ? goal : undefined;
+    
+    const result = await generateImprovedMessage({
+      tenantId,
+      originalText: text,
+      goal: goalValue,
+    });
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error previewing message:', error);
     res.status(500).json({ error: error.message });
   }
 });

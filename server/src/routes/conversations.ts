@@ -206,6 +206,47 @@ router.post('/:tenantId/conversations/:conversationId/suggest', async (req, res)
   }
 });
 
+router.post('/:tenantId/conversations/:conversationId/ai-suggestions', async (req, res) => {
+  try {
+    const { tenantId, conversationId } = req.params;
+    const { contactId, personaId, lastUserMessage } = req.body;
+    
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+    });
+    
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    
+    let messageToUse = lastUserMessage;
+    if (!messageToUse) {
+      const lastInbound = await prisma.message.findFirst({
+        where: { conversationId, direction: 'INBOUND' },
+        orderBy: { createdAt: 'desc' },
+      });
+      messageToUse = lastInbound?.body || '';
+    }
+    
+    if (!messageToUse) {
+      return res.json({ suggestions: [] });
+    }
+    
+    const suggestions = await suggestRepliesForInboundMessage({
+      tenantId,
+      personaId,
+      contactId: contactId || conversation.contactId,
+      conversationId,
+      lastUserMessage: messageToUse,
+    });
+    
+    res.json({ suggestions });
+  } catch (error: any) {
+    console.error('Error getting AI suggestions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.patch('/:tenantId/conversations/:conversationId', async (req, res) => {
   try {
     const { tenantId, conversationId } = req.params;

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { api, Campaign, Segment } from '../api/client';
 
+type AiGoal = 'higher_reply_rate' | 'more_compliant' | 'shorter' | 'friendlier';
+
 export default function Campaigns() {
   const { selectedTenant } = useTenant();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -12,7 +14,9 @@ export default function Campaigns() {
   const [selectedSegment, setSelectedSegment] = useState('');
   const [messageBody, setMessageBody] = useState('');
   const [useAi, setUseAi] = useState(false);
+  const [aiGoal, setAiGoal] = useState<AiGoal>('higher_reply_rate');
   const [improvedMessage, setImprovedMessage] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   const fetchCampaigns = async () => {
     if (!selectedTenant) return;
@@ -53,12 +57,15 @@ export default function Campaigns() {
 
   const handleAiImprove = async () => {
     if (!selectedTenant || !messageBody.trim()) return;
+    setAiLoading(true);
     try {
-      const result = await api.aiImproveMessage(selectedTenant.id, messageBody, 'higher_reply_rate');
+      const result = await api.aiImproveMessage(selectedTenant.id, messageBody, aiGoal);
       setImprovedMessage(result.text);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('AI improvement failed: ' + message);
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -186,9 +193,26 @@ export default function Campaigns() {
             </div>
             {useAi && (
               <div className="form-group">
-                <button type="button" className="btn btn-secondary btn-small" onClick={handleAiImprove}>
-                  Get AI Suggestion
-                </button>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                  <select
+                    value={aiGoal}
+                    onChange={(e) => setAiGoal(e.target.value as AiGoal)}
+                    style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                  >
+                    <option value="higher_reply_rate">Higher Reply Rate</option>
+                    <option value="more_compliant">More Compliant</option>
+                    <option value="shorter">Shorter</option>
+                    <option value="friendlier">Friendlier</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={handleAiImprove}
+                    disabled={aiLoading || !messageBody.trim()}
+                  >
+                    {aiLoading ? 'Improving...' : 'Get AI Suggestion'}
+                  </button>
+                </div>
                 {improvedMessage && (
                   <div style={{ marginTop: '10px', padding: '10px', background: '#f0fff4', borderRadius: '6px', border: '1px solid #9ae6b4' }}>
                     <strong>AI Improved:</strong>
@@ -197,7 +221,10 @@ export default function Campaigns() {
                       type="button"
                       className="btn btn-small btn-success"
                       style={{ marginTop: '8px' }}
-                      onClick={() => setMessageBody(improvedMessage)}
+                      onClick={() => {
+                        setMessageBody(improvedMessage);
+                        setImprovedMessage('');
+                      }}
                     >
                       Use This
                     </button>

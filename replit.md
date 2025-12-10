@@ -103,9 +103,13 @@ The application runs with two servers:
 - Complete REST API for all entities
 - React dashboard with all core views
 - Twilio webhook handlers for SMS with signature validation
-- AI stub layer for future integration
 - TenantSettings model: timezone, quiet hours, default from number
 - Quiet hours enforcement in campaign scheduler and conversations
 - CSV contact import with Papa Parse for proper quoted field handling
 - Global tags support on import
 - Settings UI for timezone, quiet hours, default from number
+- **AI Layer Upgrade**: Full OpenAI integration with real GPT calls
+  - generateImprovedMessage with persona and knowledge base context
+  - suggestRepliesForInboundMessage with conversation transcript
+  - AI goal selector (higher_reply_rate, more_compliant, shorter, friendlier)
+  - Fallback to original text when OPENAI_API_KEY not set

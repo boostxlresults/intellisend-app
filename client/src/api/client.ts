@@ -257,7 +257,7 @@ export const api = {
   getCampaigns: (tenantId: string) =>
     request<Campaign[]>(`${API_BASE}/tenants/${tenantId}/campaigns`),
   
-  createCampaign: (tenantId: string, data: Partial<Campaign> & { steps?: Partial<CampaignStep>[] }) =>
+  createCampaign: (tenantId: string, data: { name: string; type?: string; description?: string; segmentId?: string; steps?: { bodyTemplate: string; delayMinutes?: number; useAiAssist?: boolean }[] }) =>
     request<Campaign>(`${API_BASE}/tenants/${tenantId}/campaigns`, {
       method: 'POST',
       body: JSON.stringify(data),
