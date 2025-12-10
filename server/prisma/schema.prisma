@@ -177,9 +177,10 @@ model Campaign {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  segment Segment?       @relation(fields: [segmentId], references: [id], onDelete: SetNull)
-  steps   CampaignStep[]
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment  Segment?       @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  steps    CampaignStep[]
+  messages Message[]
 }
 
 model CampaignStep {
@@ -191,7 +192,8 @@ model CampaignStep {
   useAiAssist  Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages Message[]
 }
 
 enum ConversationStatus {
@@ -240,14 +242,19 @@ model Message {
   errorCode       String?
   isAiGenerated   Boolean          @default(false)
   createdByUserId String?
+  campaignId      String?
+  campaignStepId  String?
   createdAt       DateTime         @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
   createdBy    User?        @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  campaign     Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignStep CampaignStep? @relation(fields: [campaignStepId], references: [id], onDelete: SetNull)
 
   @@index([twilioMessageSid])
+  @@index([campaignId, campaignStepId, contactId])
 }
 
 model AiPersona {

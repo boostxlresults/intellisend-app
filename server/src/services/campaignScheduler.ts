@@ -14,6 +14,22 @@ export function startCampaignScheduler() {
   processScheduledCampaigns();
 }
 
+async function getTenantFromNumber(tenantId: string): Promise<string | null> {
+  const defaultNumber = await prisma.tenantNumber.findFirst({
+    where: { tenantId, isDefault: true },
+  });
+  
+  if (defaultNumber) {
+    return defaultNumber.phoneNumber;
+  }
+  
+  const anyNumber = await prisma.tenantNumber.findFirst({
+    where: { tenantId },
+  });
+  
+  return anyNumber?.phoneNumber || null;
+}
+
 async function processScheduledCampaigns() {
   try {
     const now = new Date();
@@ -56,25 +72,16 @@ async function processScheduledCampaigns() {
         continue;
       }
       
-      const defaultNumber = await prisma.tenantNumber.findFirst({
-        where: { tenantId: campaign.tenantId, isDefault: true },
-      });
+      const fromNumber = await getTenantFromNumber(campaign.tenantId);
       
-      if (!defaultNumber) {
-        const anyNumber = await prisma.tenantNumber.findFirst({
-          where: { tenantId: campaign.tenantId },
+      if (!fromNumber) {
+        console.warn(`No phone number configured for tenant ${campaign.tenantId} - pausing campaign`);
+        await prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { status: 'PAUSED' },
         });
-        if (!anyNumber) {
-          console.warn(`No phone number configured for tenant ${campaign.tenantId}`);
-          await prisma.campaign.update({
-            where: { id: campaign.id },
-            data: { status: 'PAUSED' },
-          });
-          continue;
-        }
+        continue;
       }
-      
-      const fromNumber = defaultNumber?.phoneNumber || '';
       
       const firstStep = campaign.steps[0];
       if (!firstStep) {
@@ -89,22 +96,24 @@ async function processScheduledCampaigns() {
       let sentCount = 0;
       let suppressedCount = 0;
       let failedCount = 0;
+      let skippedCount = 0;
       
       for (const member of campaign.segment.members) {
         const contact = member.contact;
         
         try {
-          const existingCampaignMessage = await prisma.message.findFirst({
+          const existingDelivery = await prisma.message.findFirst({
             where: {
               tenantId: campaign.tenantId,
               contactId: contact.id,
-              body: { contains: firstStep.bodyTemplate.substring(0, 50) },
-              createdAt: { gte: campaign.startAt || campaign.createdAt },
+              campaignId: campaign.id,
+              campaignStepId: firstStep.id,
             },
           });
           
-          if (existingCampaignMessage) {
-            console.log(`Skipping ${contact.phone}: already sent campaign message`);
+          if (existingDelivery) {
+            console.log(`Skipping ${contact.phone}: already sent campaign step ${firstStep.id}`);
+            skippedCount++;
             continue;
           }
           
@@ -176,6 +185,8 @@ async function processScheduledCampaigns() {
               status: smsResult.success ? 'sent' : 'failed',
               errorCode: smsResult.error,
               isAiGenerated: firstStep.useAiAssist,
+              campaignId: campaign.id,
+              campaignStepId: firstStep.id,
             },
           });
           
@@ -207,7 +218,7 @@ async function processScheduledCampaigns() {
         data: { status: 'COMPLETED' },
       });
       
-      console.log(`Campaign ${campaign.name} completed: ${sentCount} sent, ${suppressedCount} suppressed, ${failedCount} failed`);
+      console.log(`Campaign ${campaign.name} completed: ${sentCount} sent, ${suppressedCount} suppressed, ${skippedCount} already sent, ${failedCount} failed`);
     }
   } catch (error: any) {
     console.error('Campaign scheduler error:', error.message);

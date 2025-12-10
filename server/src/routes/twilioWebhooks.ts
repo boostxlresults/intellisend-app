@@ -1,17 +1,9 @@
 import { Router } from 'express';
 import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
-import { sendSmsForTenant } from '../twilio/twilioClient';
+import { isStopKeyword } from '../utils/smsKeywords';
 
 const router = Router();
-
-const STOP_KEYWORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
-
-function isStopKeyword(body: string | undefined): boolean {
-  if (!body) return false;
-  const normalized = body.trim().toUpperCase();
-  return STOP_KEYWORDS.includes(normalized);
-}
 
 router.post('/inbound', validateTwilioSignature, async (req, res) => {
   try {
