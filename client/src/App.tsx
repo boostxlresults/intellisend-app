@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { useTenant } from './context/TenantContext';
+import { api } from './api/client';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
 import ContactDetail from './pages/ContactDetail';
@@ -11,8 +13,28 @@ import KnowledgeBase from './pages/KnowledgeBase';
 import Settings from './pages/Settings';
 
 function App() {
-  const { tenants, selectedTenant, setSelectedTenant, loading } = useTenant();
+  const { tenants, selectedTenant, setSelectedTenant, refreshTenants, loading } = useTenant();
   const location = useLocation();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTenantName, setNewTenantName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateTenant = async () => {
+    if (!newTenantName.trim()) return;
+    setCreating(true);
+    try {
+      const tenant = await api.createTenant({ publicName: newTenantName });
+      await refreshTenants();
+      setSelectedTenant(tenant);
+      setShowCreateModal(false);
+      setNewTenantName('');
+    } catch (error) {
+      console.error('Failed to create tenant:', error);
+      alert('Failed to create tenant');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -39,7 +61,7 @@ function App() {
       
       <main className="main-content">
         <header className="top-bar">
-          <div className="tenant-selector">
+          <div className="tenant-selector" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <select
               value={selectedTenant?.id || ''}
               onChange={(e) => {
@@ -54,6 +76,13 @@ function App() {
                 </option>
               ))}
             </select>
+            <button 
+              className="btn btn-small btn-secondary" 
+              onClick={() => setShowCreateModal(true)}
+              style={{ padding: '6px 12px', fontSize: '13px' }}
+            >
+              + New Tenant
+            </button>
           </div>
           {selectedTenant && (
             <span style={{ color: '#718096', fontSize: '14px' }}>
@@ -64,8 +93,18 @@ function App() {
         
         <div className="page-content">
           {!selectedTenant ? (
-            <div className="empty-state">
-              <p>Please select or create a tenant to get started.</p>
+            <div className="empty-state" style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <h2 style={{ marginBottom: '16px' }}>Welcome to IntelliSend</h2>
+              <p style={{ marginBottom: '24px', color: '#718096' }}>
+                {tenants.length === 0 
+                  ? 'Create your first tenant to get started with SMS campaigns.'
+                  : 'Please select a tenant from the dropdown above.'}
+              </p>
+              {tenants.length === 0 && (
+                <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+                  Create Your First Tenant
+                </button>
+              )}
             </div>
           ) : (
             <Routes>
@@ -82,6 +121,36 @@ function App() {
           )}
         </div>
       </main>
+      
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Create New Tenant</h3>
+            <div className="form-group">
+              <label>Business Name *</label>
+              <input
+                type="text"
+                value={newTenantName}
+                onChange={(e) => setNewTenantName(e.target.value)}
+                placeholder="e.g., ABC Plumbing"
+                autoFocus
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleCreateTenant}
+                disabled={creating || !newTenantName.trim()}
+              >
+                {creating ? 'Creating...' : 'Create Tenant'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
