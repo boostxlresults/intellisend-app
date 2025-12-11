@@ -69,7 +69,7 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
 
     const client = getClient();
     
-    const messageOptions: Twilio.Twilio.MessageListInstanceCreateOptions = {
+    const messageOptions: any = {
       to: options.toNumber,
       body: options.body,
       from: options.fromNumber,

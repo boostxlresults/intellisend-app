@@ -11,6 +11,7 @@ import suppressionRoutes from './routes/suppressions';
 import aiPersonaRoutes from './routes/aiPersonas';
 import kbArticleRoutes from './routes/kbArticles';
 import twilioWebhooks from './routes/twilioWebhooks';
+import healthRoutes from './routes/health';
 import { startCampaignScheduler } from './services/campaignScheduler';
 
 dotenv.config();
@@ -37,6 +38,7 @@ app.use('/api/tenants', suppressionRoutes);
 app.use('/api/tenants', aiPersonaRoutes);
 app.use('/api/tenants', kbArticleRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
+app.use('/api/health', healthRoutes);
 
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err.message);
