@@ -113,7 +113,7 @@ function normalizeHeader(header: string): string {
   return header.trim().toLowerCase().replace(/[_\s-]+/g, '');
 }
 
-router.post('/:tenantId/contacts/import', upload.single('file'), async (req, res) => {
+router.post('/:tenantId/contacts/import', upload.single('file') as any, async (req, res) => {
   try {
     const { tenantId } = req.params;
     const globalTags = req.body.globalTags
