@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import tenantRoutes from './routes/tenants';
@@ -39,6 +40,15 @@ app.use('/api/tenants', aiPersonaRoutes);
 app.use('/api/tenants', kbArticleRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
+
+app.use(express.static(path.join(__dirname, '../public')));
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/webhooks') || req.path.startsWith('/health')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
 
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err.message);

@@ -56,3 +56,8 @@ externalPort = 3000
 
 [nix]
 channel = "stable-25_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "cd server && npm run start"]
+build = ["bash", "-c", "cd server && npm run build && cd ../client && npm run build && cp -r dist ../server/public"]
