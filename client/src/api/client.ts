@@ -75,6 +75,7 @@ export interface Segment {
   tenantId: string;
   name: string;
   type: 'STATIC' | 'DYNAMIC';
+  createdAt?: string;
   _count?: {
     members: number;
   };
@@ -241,6 +242,9 @@ export const api = {
     request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/tags/${tag}`, {
       method: 'DELETE',
     }),
+  
+  getTags: (tenantId: string) =>
+    request<string[]>(`${API_BASE}/tenants/${tenantId}/tags`),
   
   getSegments: (tenantId: string) =>
     request<Segment[]>(`${API_BASE}/tenants/${tenantId}/segments`),

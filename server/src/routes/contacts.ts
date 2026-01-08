@@ -329,4 +329,24 @@ router.delete('/:tenantId/contacts/:contactId/tags/:tag', async (req, res) => {
   }
 });
 
+router.get('/:tenantId/tags', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const tags = await prisma.contactTag.findMany({
+      where: {
+        contact: { tenantId },
+      },
+      distinct: ['tag'],
+      select: { tag: true },
+      orderBy: { tag: 'asc' },
+    });
+    
+    res.json(tags.map(t => t.tag));
+  } catch (error: any) {
+    console.error('Error fetching tags:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
