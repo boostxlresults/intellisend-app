@@ -23,7 +23,10 @@ export interface SendSmsOptions {
   toNumber: string;
   body: string;
   statusCallbackUrl?: string;
+  skipOptOutFooter?: boolean;
 }
+
+const OPT_OUT_FOOTER = '\n\nReply STOP to unsubscribe.';
 
 export interface SendSmsResult {
   success: boolean;
@@ -69,9 +72,13 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
 
     const client = getClient();
     
+    const messageBody = options.skipOptOutFooter 
+      ? options.body 
+      : options.body + OPT_OUT_FOOTER;
+    
     const messageOptions: any = {
       to: options.toNumber,
-      body: options.body,
+      body: messageBody,
       from: options.fromNumber,
     };
 
