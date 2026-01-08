@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
-import { api, Conversation } from '../api/client';
+import { api, Conversation, Contact } from '../api/client';
 
 export default function Conversations() {
   const { selectedTenant } = useTenant();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const fetchConversations = async () => {
     if (!selectedTenant) return;
@@ -26,14 +31,48 @@ export default function Conversations() {
     }
   };
 
+  const fetchContacts = async () => {
+    if (!selectedTenant) return;
+    try {
+      const data = await api.getContacts(selectedTenant.id);
+      setContacts(data.contacts || []);
+    } catch (error) {
+      console.error('Failed to fetch contacts:', error);
+    }
+  };
+
   useEffect(() => {
     fetchConversations();
   }, [selectedTenant, statusFilter, search]);
+
+  const handleOpenNewModal = () => {
+    fetchContacts();
+    setShowNewModal(true);
+    setSelectedContactId('');
+  };
+
+  const handleStartConversation = async () => {
+    if (!selectedTenant || !selectedContactId) return;
+    setCreating(true);
+    try {
+      const conversation = await api.createConversation(selectedTenant.id, selectedContactId);
+      setShowNewModal(false);
+      navigate(`/conversations/${conversation.id}`);
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+      alert('Failed to start conversation');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <div>
       <div className="page-header">
         <h2>Conversations</h2>
+        <button className="btn btn-primary" onClick={handleOpenNewModal}>
+          + New Conversation
+        </button>
       </div>
       
       <div className="card">
@@ -59,7 +98,7 @@ export default function Conversations() {
         {loading ? (
           <p>Loading conversations...</p>
         ) : conversations.length === 0 ? (
-          <p className="empty-state">No conversations found</p>
+          <p className="empty-state">No conversations found. Click "+ New Conversation" to start one!</p>
         ) : (
           <ul className="conversation-list">
             {conversations.map(conv => (
@@ -86,6 +125,45 @@ export default function Conversations() {
           </ul>
         )}
       </div>
+
+      {showNewModal && (
+        <div className="modal-overlay" onClick={() => setShowNewModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Start New Conversation</h3>
+            <p style={{ color: '#718096', marginBottom: '16px' }}>Select a contact to message:</p>
+            
+            {contacts.length === 0 ? (
+              <p className="empty-state">No contacts found. <Link to="/contacts">Add a contact first</Link>.</p>
+            ) : (
+              <select
+                value={selectedContactId}
+                onChange={(e) => setSelectedContactId(e.target.value)}
+                style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', marginBottom: '16px' }}
+              >
+                <option value="">-- Select a contact --</option>
+                {contacts.map(contact => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.firstName} {contact.lastName} ({contact.phone})
+                  </option>
+                ))}
+              </select>
+            )}
+            
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowNewModal(false)}>
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleStartConversation}
+                disabled={!selectedContactId || creating}
+              >
+                {creating ? 'Starting...' : 'Start Conversation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

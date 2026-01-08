@@ -285,6 +285,12 @@ export const api = {
   getConversation: (tenantId: string, conversationId: string) =>
     request<Conversation>(`${API_BASE}/tenants/${tenantId}/conversations/${conversationId}`),
   
+  createConversation: (tenantId: string, contactId: string) =>
+    request<Conversation>(`${API_BASE}/tenants/${tenantId}/conversations`, {
+      method: 'POST',
+      body: JSON.stringify({ contactId }),
+    }),
+  
   sendMessage: (tenantId: string, conversationId: string, body: string, fromNumber?: string) =>
     request<{ message: Message }>(`${API_BASE}/tenants/${tenantId}/conversations/${conversationId}/messages`, {
       method: 'POST',

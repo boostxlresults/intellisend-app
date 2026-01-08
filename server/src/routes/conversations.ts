@@ -46,6 +46,55 @@ router.get('/:tenantId/conversations', async (req, res) => {
   }
 });
 
+router.post('/:tenantId/conversations', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { contactId } = req.body;
+    
+    if (!contactId) {
+      return res.status(400).json({ error: 'contactId is required' });
+    }
+    
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, tenantId },
+    });
+    
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    
+    let conversation = await prisma.conversation.findFirst({
+      where: { tenantId, contactId, status: 'OPEN' },
+    });
+    
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          tenantId,
+          contactId,
+          status: 'OPEN',
+          lastMessageAt: new Date(),
+        },
+      });
+    }
+    
+    const fullConversation = await prisma.conversation.findUnique({
+      where: { id: conversation.id },
+      include: {
+        contact: true,
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    
+    res.status(201).json(fullConversation);
+  } catch (error: any) {
+    console.error('Error creating conversation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/:tenantId/conversations/:conversationId', async (req, res) => {
   try {
     const { tenantId, conversationId } = req.params;
