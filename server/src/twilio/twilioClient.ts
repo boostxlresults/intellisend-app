@@ -24,9 +24,36 @@ export interface SendSmsOptions {
   body: string;
   statusCallbackUrl?: string;
   skipOptOutFooter?: boolean;
+  contactId?: string;
+  campaignId?: string;
+  messageId?: string;
 }
 
 const OPT_OUT_FOOTER = '\n\nReply STOP to unsubscribe.';
+
+export async function logMessageEvent(
+  tenantId: string,
+  phone: string,
+  eventType: 'SENT' | 'DELIVERED' | 'FAILED' | 'SUPPRESSED' | 'QUIET_HOURS_BLOCKED',
+  options?: { contactId?: string; messageId?: string; campaignId?: string; errorCode?: string; errorMessage?: string }
+) {
+  try {
+    await prisma.messageEvent.create({
+      data: {
+        tenantId,
+        phone,
+        eventType,
+        contactId: options?.contactId,
+        messageId: options?.messageId,
+        campaignId: options?.campaignId,
+        errorCode: options?.errorCode,
+        errorMessage: options?.errorMessage,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to log message event:', error);
+  }
+}
 
 export interface SendSmsResult {
   success: boolean;
@@ -63,6 +90,11 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
 
     if (suppression) {
       console.log(`SUPPRESSED: Not sending to ${options.toNumber} for tenant ${options.tenantId} (reason: ${suppression.reason})`);
+      await logMessageEvent(options.tenantId, options.toNumber, 'SUPPRESSED', {
+        contactId: options.contactId,
+        campaignId: options.campaignId,
+        errorMessage: suppression.reason,
+      });
       return {
         success: false,
         suppressed: true,
@@ -94,12 +126,26 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
 
     console.log(`SMS sent successfully. SID: ${message.sid}, From: ${options.fromNumber}, To: ${options.toNumber}`);
 
+    await logMessageEvent(options.tenantId, options.toNumber, 'SENT', {
+      contactId: options.contactId,
+      messageId: options.messageId,
+      campaignId: options.campaignId,
+    });
+
     return {
       success: true,
       messageSid: message.sid,
     };
   } catch (error: any) {
     console.error(`Failed to send SMS to ${options.toNumber}:`, error.message);
+    
+    await logMessageEvent(options.tenantId, options.toNumber, 'FAILED', {
+      contactId: options.contactId,
+      campaignId: options.campaignId,
+      errorCode: error.code?.toString(),
+      errorMessage: error.message,
+    });
+    
     return {
       success: false,
       error: error.message,

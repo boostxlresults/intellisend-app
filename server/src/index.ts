@@ -13,6 +13,7 @@ import aiPersonaRoutes from './routes/aiPersonas';
 import kbArticleRoutes from './routes/kbArticles';
 import twilioWebhooks from './routes/twilioWebhooks';
 import healthRoutes from './routes/health';
+import analyticsRoutes from './routes/analytics';
 import { startCampaignScheduler } from './services/campaignScheduler';
 
 dotenv.config();
@@ -38,6 +39,7 @@ app.use('/api/tenants', conversationRoutes);
 app.use('/api/tenants', suppressionRoutes);
 app.use('/api/tenants', aiPersonaRoutes);
 app.use('/api/tenants', kbArticleRoutes);
+app.use('/api/tenants', analyticsRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 

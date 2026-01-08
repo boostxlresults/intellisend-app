@@ -10,6 +10,7 @@ import Campaigns from './pages/Campaigns';
 import Conversations from './pages/Conversations';
 import ConversationDetail from './pages/ConversationDetail';
 import KnowledgeBase from './pages/KnowledgeBase';
+import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 
 function App() {
@@ -57,6 +58,7 @@ function App() {
           <NavLink to="/segments" className={({ isActive }) => isActive ? 'active' : ''}>Segments</NavLink>
           <NavLink to="/campaigns" className={({ isActive }) => isActive ? 'active' : ''}>Campaigns</NavLink>
           <NavLink to="/conversations" className={location.pathname.startsWith('/conversations') ? 'active' : ''}>Conversations</NavLink>
+          <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''}>Analytics</NavLink>
           <NavLink to="/knowledge-base" className={({ isActive }) => isActive ? 'active' : ''}>Knowledge Base</NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>Settings</NavLink>
         </nav>
@@ -118,6 +120,7 @@ function App() {
               <Route path="/campaigns" element={<Campaigns />} />
               <Route path="/conversations" element={<Conversations />} />
               <Route path="/conversations/:conversationId" element={<ConversationDetail />} />
+              <Route path="/analytics" element={<Analytics />} />
               <Route path="/knowledge-base" element={<KnowledgeBase />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

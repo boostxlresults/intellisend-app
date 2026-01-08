@@ -29,6 +29,7 @@ model Tenant {
   aiPersonas       AiPersona[]
   knowledgeArticles KnowledgeBaseArticle[]
   settings         TenantSettings?
+  messageEvents    MessageEvent[]
 }
 
 model TenantSettings {
@@ -298,4 +299,31 @@ model KnowledgeBaseArticle {
   updatedAt  DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+enum MessageEventType {
+  SENT
+  DELIVERED
+  FAILED
+  SUPPRESSED
+  QUIET_HOURS_BLOCKED
+}
+
+model MessageEvent {
+  id         String           @id @default(uuid())
+  tenantId   String
+  contactId  String?
+  phone      String
+  eventType  MessageEventType
+  messageId  String?
+  campaignId String?
+  errorCode  String?
+  errorMessage String?
+  createdAt  DateTime         @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, eventType])
+  @@index([tenantId, createdAt])
+  @@index([campaignId])
 }

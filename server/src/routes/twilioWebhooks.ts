@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
 import { isStopKeyword } from '../utils/smsKeywords';
+import { logMessageEvent } from '../twilio/twilioClient';
 
 const router = Router();
 
@@ -151,6 +152,22 @@ router.post('/status', validateTwilioSignature, async (req, res) => {
         errorCode: ErrorCode || null,
       },
     });
+    
+    if (MessageStatus === 'delivered') {
+      await logMessageEvent(message.tenantId, message.toNumber, 'DELIVERED', {
+        contactId: message.contactId,
+        messageId: message.id,
+        campaignId: message.campaignId || undefined,
+      });
+    } else if (MessageStatus === 'failed' || MessageStatus === 'undelivered') {
+      await logMessageEvent(message.tenantId, message.toNumber, 'FAILED', {
+        contactId: message.contactId,
+        messageId: message.id,
+        campaignId: message.campaignId || undefined,
+        errorCode: ErrorCode,
+        errorMessage: `Twilio status: ${MessageStatus}`,
+      });
+    }
     
     console.log(`Updated message ${message.id} status to ${MessageStatus}`);
     

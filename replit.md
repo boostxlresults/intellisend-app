@@ -42,9 +42,10 @@ IntelliSend is a production-ready outbound SMS platform for home-services brands
 2. **Contact Management**: Import contacts via JSON or CSV, add tags, segment audiences
 3. **Campaign System**: Create blast campaigns with message templates and AI assistance
 4. **Conversation Inbox**: Two-way SMS messaging with AI reply suggestions
-5. **Compliance**: STOP word detection (STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT), suppression lists, quiet hours enforcement
+5. **Compliance**: STOP word detection (STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT), suppression lists, quiet hours enforcement, automatic opt-out footer
 6. **Twilio Integration**: Webhooks for inbound SMS and status callbacks with signature validation
 7. **Tenant Settings**: Per-tenant timezone, quiet hours (no SMS during configured hours), and default from number
+8. **Analytics Dashboard**: Message volume tracking, delivery rates, opt-out trends, blocked sends, campaign performance with charts
 
 ## Environment Variables
 
@@ -113,3 +114,14 @@ The application runs with two servers:
   - suggestRepliesForInboundMessage with conversation transcript
   - AI goal selector (higher_reply_rate, more_compliant, shorter, friendlier)
   - Fallback to original text when OPENAI_API_KEY not set
+- **New Conversation Flow**: Start new conversations from Conversations page with contact selector
+- **Opt-Out Footer**: All outgoing SMS automatically includes "Reply STOP to unsubscribe" footer
+- **Segment Tag Filtering**: Create segments by filtering contacts by tags
+- **Analytics Dashboard**: Comprehensive SMS analytics with:
+  - MessageEvent model tracking SENT, DELIVERED, FAILED, SUPPRESSED events
+  - KPI cards: Messages Sent, Delivery Rate, Opt-Outs, Reply Rate, Blocked Sends, Replies
+  - Line charts for message volume over time
+  - Bar charts for delivery status breakdown
+  - Campaign performance table with delivery metrics
+  - Time range filtering (Today, 7 Days, 30 Days, All Time)
+  - Recharts library for visualizations

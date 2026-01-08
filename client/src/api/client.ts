@@ -145,6 +145,46 @@ export interface KBArticle {
   sourceUrl?: string;
 }
 
+export interface AnalyticsSummary {
+  totalSent: number;
+  totalDelivered: number;
+  totalFailed: number;
+  totalSuppressed: number;
+  totalOptOuts: number;
+  totalInbound: number;
+  totalOutbound: number;
+  deliveryRate: number;
+  optOutRate: number;
+  replyRate: number;
+}
+
+export interface TimelineDataPoint {
+  date: string;
+  sent: number;
+  delivered: number;
+  failed: number;
+  suppressed: number;
+  inbound: number;
+}
+
+export interface CampaignAnalytics {
+  id: string;
+  name: string;
+  status: string;
+  audienceSize: number;
+  messagesSent: number;
+  messagesDelivered: number;
+  messagesFailed: number;
+  deliveryRate: number;
+  createdAt: string;
+}
+
+export interface OptOutAnalytics {
+  recent: { id: string; phone: string; createdAt: string }[];
+  trend: { date: string; count: number }[];
+  total: number;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
@@ -332,4 +372,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  
+  getAnalyticsSummary: (tenantId: string, range: string = '30d') =>
+    request<AnalyticsSummary>(`${API_BASE}/tenants/${tenantId}/analytics/summary?range=${range}`),
+  
+  getAnalyticsTimeline: (tenantId: string, range: string = '30d') =>
+    request<TimelineDataPoint[]>(`${API_BASE}/tenants/${tenantId}/analytics/timeline?range=${range}`),
+  
+  getAnalyticsCampaigns: (tenantId: string, range: string = '30d') =>
+    request<CampaignAnalytics[]>(`${API_BASE}/tenants/${tenantId}/analytics/campaigns?range=${range}`),
+  
+  getAnalyticsOptOuts: (tenantId: string, range: string = '30d') =>
+    request<OptOutAnalytics>(`${API_BASE}/tenants/${tenantId}/analytics/opt-outs?range=${range}`),
 };
