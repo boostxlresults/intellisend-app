@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, Tenant } from '../api/client';
+import { useAuth } from './AuthContext';
 
 interface TenantContextType {
   tenants: Tenant[];
@@ -12,11 +13,16 @@ interface TenantContextType {
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
 export function TenantProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshTenants = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     try {
       const data = await api.getTenants();
       setTenants(data);
@@ -31,8 +37,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    refreshTenants();
-  }, []);
+    if (user) {
+      refreshTenants();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   return (
     <TenantContext.Provider value={{

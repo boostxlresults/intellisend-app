@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { useTenant } from './context/TenantContext';
+import { useAuth } from './context/AuthContext';
 import { api } from './api/client';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
@@ -12,8 +13,10 @@ import ConversationDetail from './pages/ConversationDetail';
 import KnowledgeBase from './pages/KnowledgeBase';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
 
 function App() {
+  const { user, loading: authLoading, logout } = useAuth();
   const { tenants, selectedTenant, setSelectedTenant, refreshTenants, loading } = useTenant();
   const location = useLocation();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -39,6 +42,18 @@ function App() {
       setCreating(false);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   if (loading) {
     return (
@@ -89,11 +104,30 @@ function App() {
               + New Tenant
             </button>
           </div>
-          {selectedTenant && (
-            <span style={{ color: '#718096', fontSize: '14px' }}>
-              {selectedTenant._count?.contacts || 0} contacts | {selectedTenant._count?.conversations || 0} conversations
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            {selectedTenant && (
+              <span style={{ color: '#718096', fontSize: '14px' }}>
+                {selectedTenant._count?.contacts || 0} contacts | {selectedTenant._count?.conversations || 0} conversations
+              </span>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ color: '#4a5568', fontSize: '14px' }}>{user.name}</span>
+              <button
+                onClick={logout}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '13px',
+                  background: '#e2e8f0',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: '#4a5568',
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </header>
         
         <div className="page-content">

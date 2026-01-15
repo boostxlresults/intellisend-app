@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import dotenv from 'dotenv';
+import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';
 import { PrismaClient } from '@prisma/client';
 import tenantRoutes from './routes/tenants';
 import contactRoutes from './routes/contacts';
@@ -14,6 +16,8 @@ import kbArticleRoutes from './routes/kbArticles';
 import twilioWebhooks from './routes/twilioWebhooks';
 import healthRoutes from './routes/health';
 import analyticsRoutes from './routes/analytics';
+import authRoutes from './routes/auth';
+import { requireAuth } from './middleware/auth';
 import { startCampaignScheduler } from './services/campaignScheduler';
 
 dotenv.config();
@@ -23,23 +27,47 @@ export const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+const PgSession = connectPgSimple(session);
+
+app.use(cors({
+  origin: process.env.FRONTEND_URL || true,
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+app.use(session({
+  store: new PgSession({
+    conString: process.env.DATABASE_URL,
+    tableName: 'user_sessions',
+    createTableIfMissing: true,
+  }),
+  secret: process.env.SESSION_SECRET || 'intellisend-dev-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  },
+}));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.use('/api/tenants', tenantRoutes);
-app.use('/api/tenants', contactRoutes);
-app.use('/api/tenants', segmentRoutes);
-app.use('/api/tenants', campaignRoutes);
-app.use('/api/tenants', conversationRoutes);
-app.use('/api/tenants', suppressionRoutes);
-app.use('/api/tenants', aiPersonaRoutes);
-app.use('/api/tenants', kbArticleRoutes);
-app.use('/api/tenants', analyticsRoutes);
+app.use('/api/auth', authRoutes);
+
+app.use('/api/tenants', requireAuth, tenantRoutes);
+app.use('/api/tenants', requireAuth, contactRoutes);
+app.use('/api/tenants', requireAuth, segmentRoutes);
+app.use('/api/tenants', requireAuth, campaignRoutes);
+app.use('/api/tenants', requireAuth, conversationRoutes);
+app.use('/api/tenants', requireAuth, suppressionRoutes);
+app.use('/api/tenants', requireAuth, aiPersonaRoutes);
+app.use('/api/tenants', requireAuth, kbArticleRoutes);
+app.use('/api/tenants', requireAuth, analyticsRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 

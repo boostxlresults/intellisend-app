@@ -46,6 +46,7 @@ IntelliSend is a production-ready outbound SMS platform for home-services brands
 6. **Twilio Integration**: Webhooks for inbound SMS and status callbacks with signature validation
 7. **Tenant Settings**: Per-tenant timezone, quiet hours (no SMS during configured hours), and default from number
 8. **Analytics Dashboard**: Message volume tracking, delivery rates, opt-out trends, blocked sends, campaign performance with charts
+9. **User Authentication**: Secure login with bcrypt password hashing, session-based auth, protected API routes
 
 ## Environment Variables
 
@@ -54,6 +55,8 @@ Required for full functionality:
 - `TWILIO_ACCOUNT_SID` - Twilio account SID
 - `TWILIO_AUTH_TOKEN` - Twilio auth token
 - `TWILIO_MESSAGING_SERVICE_SID` - Twilio messaging service SID
+- `SESSION_SECRET` - Secret for session encryption (auto-generated if not set)
+- `FRONTEND_URL` - Frontend URL for CORS (optional, auto-detected)
 
 ## API Endpoints
 

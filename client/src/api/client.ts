@@ -188,6 +188,7 @@ export interface OptOutAnalytics {
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
@@ -236,6 +237,7 @@ export const api = {
     
     const response = await fetch(`${API_BASE}/tenants/${tenantId}/contacts/import`, {
       method: 'POST',
+      credentials: 'include',
       body: formData,
     });
     
