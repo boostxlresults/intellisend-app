@@ -128,3 +128,12 @@ The application runs with two servers:
   - Campaign performance table with delivery metrics
   - Time range filtering (Today, 7 Days, 30 Days, All Time)
   - Recharts library for visualizations
+- **User Authentication**: Secure login with bcrypt password hashing, session-based auth, protected API routes
+  - First user registration allowed (creates admin)
+  - Subsequent registration disabled for security
+  - Sessions stored in PostgreSQL with connect-pg-simple
+- **Production Deployment Preparation**:
+  - Environment variable configuration for API URLs
+  - CORS configured for cross-domain frontend/backend
+  - Session cookies configured for cross-domain auth
+  - Comprehensive deployment guide (DEPLOYMENT.md) for Vercel + Railway + Neon
