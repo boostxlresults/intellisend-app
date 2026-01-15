@@ -102,21 +102,36 @@ export default function Conversations() {
         ) : (
           <ul className="conversation-list">
             {conversations.map(conv => (
-              <li key={conv.id} className="conversation-item">
+              <li key={conv.id} className="conversation-item" style={conv.needsAttention ? { borderLeft: '4px solid #e53e3e', background: '#fff5f5' } : {}}>
                 <Link to={`/conversations/${conv.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <div className="name">{conv.contact?.firstName} {conv.contact?.lastName}</div>
+                      <div className="name" style={conv.needsAttention ? { fontWeight: 700 } : {}}>
+                        {conv.needsAttention && <span style={{ color: '#e53e3e', marginRight: '8px' }}>●</span>}
+                        {conv.contact?.firstName} {conv.contact?.lastName}
+                      </div>
                       <div className="phone">{conv.contact?.phone}</div>
                       {conv.messages?.[0] && (
                         <div className="preview">{conv.messages[0].body}</div>
                       )}
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <span className={`status-badge ${conv.status.toLowerCase()}`}>{conv.status}</span>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        {conv.needsAttention && (
+                          <span style={{ background: '#e53e3e', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                            Needs Attention
+                          </span>
+                        )}
+                        <span className={`status-badge ${conv.status.toLowerCase()}`}>{conv.status}</span>
+                      </div>
                       <div style={{ color: '#718096', fontSize: '12px', marginTop: '4px' }}>
                         {new Date(conv.lastMessageAt).toLocaleString()}
                       </div>
+                      {conv.serviceTitanBookingId && (
+                        <div style={{ color: '#805ad5', fontSize: '11px', marginTop: '2px' }}>
+                          ST Booking: {conv.serviceTitanBookingId.substring(0, 8)}...
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Link>

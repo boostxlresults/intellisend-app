@@ -3,10 +3,41 @@ import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
 import { isStopKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
-import { buildConversationSummary } from '../services/conversationSummary';
-import { createBookingFromInboundSms } from '../services/serviceTitanClient';
 
 const router = Router();
+
+async function enqueueServiceTitanBookingJob(
+  messageSid: string,
+  conversationId: string,
+  tenantId: string,
+  contactId: string,
+  toNumber: string,
+  messageBody: string
+): Promise<boolean> {
+  try {
+    await prisma.serviceTitanBookingJob.create({
+      data: {
+        messageSid,
+        conversationId,
+        tenantId,
+        contactId,
+        toNumber,
+        messageBody,
+        status: 'PENDING',
+        nextRunAt: new Date(),
+      },
+    });
+    console.log(`ServiceTitan booking job enqueued for MessageSid ${messageSid}`);
+    return true;
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      console.log(`ServiceTitan booking job already exists for MessageSid ${messageSid}`);
+      return true;
+    }
+    console.error(`Failed to enqueue ServiceTitan booking job:`, error);
+    throw error;
+  }
+}
 
 router.post('/inbound', validateTwilioSignature, async (req, res) => {
   try {
@@ -127,36 +158,22 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       data: { needsAttention: true },
     });
     
-    if (!conversation.serviceTitanBookingId) {
+    const inboundMessageSid = MessageSid || '';
+    
+    if (inboundMessageSid && !conversation.serviceTitanBookingId) {
       try {
-        const summary = await buildConversationSummary(conversation.id, 5, 800);
-        const bookingId = await createBookingFromInboundSms({
+        await enqueueServiceTitanBookingJob(
+          inboundMessageSid,
+          conversation.id,
           tenantId,
-          contact: {
-            id: contact.id,
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            phone: contact.phone,
-            email: contact.email,
-          },
-          conversationId: conversation.id,
-          toNumber: To,
-          lastInboundMessage: Body || '',
-          conversationSummary: summary,
-        });
-        
-        if (bookingId) {
-          await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: {
-              serviceTitanBookingId: bookingId,
-              serviceTitanBookingCreatedAt: new Date(),
-            },
-          });
-          console.log(`ServiceTitan booking created: ${bookingId} for conversation ${conversation.id}`);
-        }
-      } catch (stError) {
-        console.error(`ServiceTitan booking failed for conversation ${conversation.id}:`, stError);
+          contact.id,
+          To,
+          Body || ''
+        );
+      } catch (enqueueError) {
+        console.error('Failed to enqueue ServiceTitan booking job, returning 500 for retry:', enqueueError);
+        res.status(500).type('text/xml').send('<Response></Response>');
+        return;
       }
     }
     

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
-import { api, TenantNumber, Suppression, AiPersona, TenantSettings } from '../api/client';
+import { api, TenantNumber, Suppression, AiPersona, TenantSettings, ServiceTitanConfig } from '../api/client';
 
 interface TwilioIntegration {
   twilioConfigured: boolean;
@@ -37,23 +37,46 @@ export default function Settings() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingTwilio, setSavingTwilio] = useState(false);
   const [testingTwilio, setTestingTwilio] = useState(false);
+  const [stConfig, setStConfig] = useState<ServiceTitanConfig | null>(null);
+  const [savingStConfig, setSavingStConfig] = useState(false);
+  const [testingStConnection, setTestingStConnection] = useState(false);
+  const [stForm, setStForm] = useState({
+    tenantApiBaseUrl: '',
+    serviceTitanTenantId: '',
+    clientId: '',
+    clientSecret: '',
+    bookingProvider: 'IntelliSend-SMS',
+    enabled: false,
+  });
 
   const fetchData = async () => {
     if (!selectedTenant) return;
     setLoading(true);
     try {
-      const [nums, supps, pers, settings, integrations] = await Promise.all([
+      const [nums, supps, pers, settings, integrations, stConfigData] = await Promise.all([
         api.getTenantNumbers(selectedTenant.id),
         api.getSuppressions(selectedTenant.id),
         api.getAiPersonas(selectedTenant.id),
         api.getTenantSettings(selectedTenant.id),
         api.getIntegrations(selectedTenant.id),
+        api.getServiceTitanConfig(selectedTenant.id),
       ]);
       setNumbers(nums);
       setSuppressions(supps);
       setPersonas(pers);
       setTenantSettings(settings);
       setTwilioIntegration(integrations);
+      setStConfig(stConfigData);
+      if (stConfigData) {
+        setStForm({
+          tenantApiBaseUrl: stConfigData.tenantApiBaseUrl || '',
+          serviceTitanTenantId: stConfigData.serviceTitanTenantId || '',
+          clientId: stConfigData.clientId || '',
+          clientSecret: '',
+          bookingProvider: stConfigData.bookingProvider || 'IntelliSend-SMS',
+          enabled: stConfigData.enabled || false,
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch settings:', error);
     } finally {
@@ -213,6 +236,48 @@ export default function Settings() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Failed to remove Twilio: ' + message);
+    }
+  };
+
+  const handleSaveServiceTitan = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedTenant) return;
+    setSavingStConfig(true);
+    try {
+      const savedConfig = await api.saveServiceTitanConfig(selectedTenant.id, {
+        tenantApiBaseUrl: stForm.tenantApiBaseUrl,
+        serviceTitanTenantId: stForm.serviceTitanTenantId,
+        clientId: stForm.clientId,
+        clientSecret: stForm.clientSecret || undefined,
+        bookingProvider: stForm.bookingProvider,
+        enabled: stForm.enabled,
+      });
+      setStConfig(savedConfig);
+      setStForm(prev => ({ ...prev, clientSecret: '' }));
+      alert('ServiceTitan configuration saved successfully!');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to save ServiceTitan configuration: ' + message);
+    } finally {
+      setSavingStConfig(false);
+    }
+  };
+
+  const handleTestServiceTitan = async () => {
+    if (!selectedTenant) return;
+    setTestingStConnection(true);
+    try {
+      const result = await api.testServiceTitanConnection(selectedTenant.id);
+      if (result.ok) {
+        alert('ServiceTitan connection successful!');
+      } else {
+        alert('ServiceTitan test failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to test ServiceTitan: ' + message);
+    } finally {
+      setTestingStConnection(false);
     }
   };
 
@@ -474,6 +539,110 @@ export default function Settings() {
                 </p>
               </div>
             )}
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginBottom: '16px' }}>ServiceTitan Integration</h3>
+            <p style={{ color: '#718096', marginBottom: '16px', fontSize: '14px' }}>
+              Connect ServiceTitan to automatically create Bookings when customers reply to SMS campaigns. This notifies your CSR team that a conversation needs attention.
+            </p>
+            <form onSubmit={handleSaveServiceTitan}>
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={stForm.enabled}
+                    onChange={(e) => setStForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span>Enable ServiceTitan Bookings Integration</span>
+                </label>
+              </div>
+              
+              <div className="form-group">
+                <label>API Base URL</label>
+                <input
+                  type="text"
+                  value={stForm.tenantApiBaseUrl}
+                  onChange={(e) => setStForm(prev => ({ ...prev, tenantApiBaseUrl: e.target.value }))}
+                  placeholder="https://api.servicetitan.io"
+                />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  ServiceTitan API base URL (usually https://api.servicetitan.io or https://api-integration.servicetitan.io)
+                </p>
+              </div>
+              
+              <div className="form-group">
+                <label>ServiceTitan Tenant ID</label>
+                <input
+                  type="text"
+                  value={stForm.serviceTitanTenantId}
+                  onChange={(e) => setStForm(prev => ({ ...prev, serviceTitanTenantId: e.target.value }))}
+                  placeholder="Your ST Tenant ID"
+                />
+              </div>
+              
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Client ID</label>
+                  <input
+                    type="text"
+                    value={stForm.clientId}
+                    onChange={(e) => setStForm(prev => ({ ...prev, clientId: e.target.value }))}
+                    placeholder="Client ID from ST Developer Portal"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Client Secret</label>
+                  <input
+                    type="password"
+                    value={stForm.clientSecret}
+                    onChange={(e) => setStForm(prev => ({ ...prev, clientSecret: e.target.value }))}
+                    placeholder={stConfig ? '(leave blank to keep existing)' : 'Client Secret'}
+                  />
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label>Booking Provider Name</label>
+                <input
+                  type="text"
+                  value={stForm.bookingProvider}
+                  onChange={(e) => setStForm(prev => ({ ...prev, bookingProvider: e.target.value }))}
+                  placeholder="IntelliSend-SMS"
+                />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  Tag name for bookings created by IntelliSend (appears in ST booking source)
+                </p>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                <button type="submit" className="btn btn-primary" disabled={savingStConfig}>
+                  {savingStConfig ? 'Saving...' : 'Save Configuration'}
+                </button>
+                {stConfig && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleTestServiceTitan}
+                    disabled={testingStConnection}
+                  >
+                    {testingStConnection ? 'Testing...' : 'Test Connection'}
+                  </button>
+                )}
+              </div>
+              
+              {stConfig?.enabled && (
+                <div style={{ marginTop: '16px', padding: '12px', background: '#f0fff4', borderRadius: '6px', border: '1px solid #9ae6b4' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#38a169', fontSize: '20px' }}>&#10003;</span>
+                    <span style={{ fontWeight: 500, color: '#276749' }}>ServiceTitan Integration Active</span>
+                  </div>
+                  <p style={{ fontSize: '12px', color: '#2f855a', marginTop: '8px' }}>
+                    Inbound SMS replies will automatically create ServiceTitan Bookings to alert your team.
+                  </p>
+                </div>
+              )}
+            </form>
           </div>
         </>
       )}

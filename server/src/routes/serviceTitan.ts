@@ -45,40 +45,39 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
       enabled,
     } = req.body;
     
+    const existing = await prisma.serviceTitanConfig.findUnique({
+      where: { tenantId },
+    });
+    
+    const newSecret = clientSecret || existing?.clientSecret || '';
+    
     if (enabled === true) {
       if (!tenantApiBaseUrl || !serviceTitanTenantId || !clientId) {
         return res.status(400).json({
           error: 'API Base URL, ServiceTitan Tenant ID, and Client ID are required when enabling the integration',
         });
       }
+      if (!newSecret) {
+        return res.status(400).json({
+          error: 'Client Secret is required when enabling the integration',
+        });
+      }
     }
     
-    const existing = await prisma.serviceTitanConfig.findUnique({
-      where: { tenantId },
-    });
-    
-    const updateData: any = {
+    const updateData = {
       tenantApiBaseUrl: tenantApiBaseUrl || existing?.tenantApiBaseUrl || '',
       serviceTitanTenantId: serviceTitanTenantId || existing?.serviceTitanTenantId || '',
       clientId: clientId || existing?.clientId || '',
+      clientSecret: newSecret,
       bookingProvider: bookingProvider || existing?.bookingProvider || 'IntelliSend-SMS',
       enabled: enabled ?? existing?.enabled ?? false,
     };
-    
-    if (clientSecret) {
-      updateData.clientSecret = clientSecret;
-    } else if (!existing) {
-      return res.status(400).json({
-        error: 'Client Secret is required for initial setup',
-      });
-    }
     
     const config = await prisma.serviceTitanConfig.upsert({
       where: { tenantId },
       create: {
         tenantId,
         ...updateData,
-        clientSecret: clientSecret || '',
       },
       update: updateData,
     });

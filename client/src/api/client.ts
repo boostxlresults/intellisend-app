@@ -53,8 +53,23 @@ export interface Conversation {
   contactId: string;
   status: 'OPEN' | 'CLOSED';
   lastMessageAt: string;
+  needsAttention?: boolean;
+  serviceTitanBookingId?: string;
+  serviceTitanBookingCreatedAt?: string;
   contact?: Contact;
   messages?: Message[];
+}
+
+export interface ServiceTitanConfig {
+  id: string;
+  tenantId: string;
+  tenantApiBaseUrl: string;
+  serviceTitanTenantId: string;
+  clientId: string;
+  bookingProvider: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Message {
@@ -599,4 +614,25 @@ export const api = {
 
   getABResults: (tenantId: string, campaignId: string) =>
     request<any[]>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/ab-results`),
+
+  getServiceTitanConfig: (tenantId: string) =>
+    request<ServiceTitanConfig | null>(`${API_BASE}/tenants/${tenantId}/servicetitan-config`),
+
+  saveServiceTitanConfig: (tenantId: string, data: {
+    tenantApiBaseUrl: string;
+    serviceTitanTenantId: string;
+    clientId: string;
+    clientSecret?: string;
+    bookingProvider: string;
+    enabled: boolean;
+  }) =>
+    request<ServiceTitanConfig>(`${API_BASE}/tenants/${tenantId}/servicetitan-config`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  testServiceTitanConnection: (tenantId: string) =>
+    request<{ ok: boolean; error?: string }>(`${API_BASE}/tenants/${tenantId}/servicetitan-test`, {
+      method: 'POST',
+    }),
 };

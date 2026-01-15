@@ -30,6 +30,7 @@ import { requireAuth } from './middleware/auth';
 import { startCampaignScheduler } from './services/campaignScheduler';
 import { startQueueDispatcher } from './services/queueDispatcher';
 import { startSequenceProcessor } from './services/sequenceProcessor';
+import { startServiceTitanBookingProcessor } from './services/serviceTitanBookingProcessor';
 
 dotenv.config();
 
@@ -122,6 +123,7 @@ async function main() {
     startCampaignScheduler();
     startQueueDispatcher();
     startSequenceProcessor();
+    startServiceTitanBookingProcessor();
     
     app.listen(PORT, () => {
       console.log(`IntelliSend server running on port ${PORT}`);

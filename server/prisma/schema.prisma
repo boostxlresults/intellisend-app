@@ -723,3 +723,33 @@ model ServiceTitanConfig {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
+
+enum ServiceTitanBookingJobStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+model ServiceTitanBookingJob {
+  id              String   @id @default(uuid())
+  messageSid      String   @unique
+  conversationId  String
+  tenantId        String
+  contactId       String
+  toNumber        String
+  messageBody     String
+  status          ServiceTitanBookingJobStatus @default(PENDING)
+  bookingId       String?
+  attempts        Int      @default(0)
+  maxAttempts     Int      @default(3)
+  nextRunAt       DateTime @default(now())
+  leaseExpiresAt  DateTime?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([conversationId])
+  @@index([tenantId])
+  @@index([status, nextRunAt])
+}
