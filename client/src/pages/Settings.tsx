@@ -269,9 +269,25 @@ export default function Settings() {
     try {
       const result = await api.testServiceTitanConnection(selectedTenant.id);
       if (result.ok) {
-        alert('ServiceTitan connection successful!');
+        alert(
+          'ServiceTitan connection successful!\n\n' +
+          '✓ OAuth Authentication: Passed\n' +
+          '✓ API Access: Passed\n' +
+          '✓ Bookings API: Passed\n\n' +
+          'Your integration is ready to create bookings.'
+        );
       } else {
-        alert('ServiceTitan test failed: ' + (result.error || 'Unknown error'));
+        const details = result.details || { oauth: false, apiAccess: false, bookingsAccess: false };
+        const statusLines = [
+          `${details.oauth ? '✓' : '✗'} OAuth Authentication: ${details.oauth ? 'Passed' : 'Failed'}`,
+          `${details.apiAccess ? '✓' : '✗'} API Access: ${details.apiAccess ? 'Passed' : 'Failed'}`,
+          `${details.bookingsAccess ? '✓' : '✗'} Bookings API: ${details.bookingsAccess ? 'Passed' : 'Failed'}`,
+        ];
+        alert(
+          'ServiceTitan test failed:\n\n' +
+          statusLines.join('\n') +
+          '\n\nError: ' + (result.error || 'Unknown error')
+        );
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';

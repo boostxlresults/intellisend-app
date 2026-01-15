@@ -632,7 +632,15 @@ export const api = {
     }),
 
   testServiceTitanConnection: (tenantId: string) =>
-    request<{ ok: boolean; error?: string }>(`${API_BASE}/tenants/${tenantId}/servicetitan-test`, {
+    request<{ 
+      ok: boolean; 
+      error?: string;
+      details?: {
+        oauth: boolean;
+        apiAccess: boolean;
+        bookingsAccess: boolean;
+      };
+    }>(`${API_BASE}/tenants/${tenantId}/servicetitan-test`, {
       method: 'POST',
     }),
 };

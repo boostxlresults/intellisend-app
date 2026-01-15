@@ -156,12 +156,26 @@ export async function createBookingFromInboundSms(
   }
 }
 
-export async function testServiceTitanConnection(tenantId: string): Promise<{ ok: boolean; error?: string }> {
+export async function testServiceTitanConnection(tenantId: string): Promise<{ 
+  ok: boolean; 
+  error?: string;
+  details?: {
+    oauth: boolean;
+    apiAccess: boolean;
+    bookingsAccess: boolean;
+  };
+}> {
+  const details = {
+    oauth: false,
+    apiAccess: false,
+    bookingsAccess: false,
+  };
+
   try {
     const config = await getServiceTitanConfig(tenantId);
     
     if (!config) {
-      return { ok: false, error: 'ServiceTitan configuration not found' };
+      return { ok: false, error: 'ServiceTitan configuration not found', details };
     }
 
     const accessToken = await getAccessToken({
@@ -172,12 +186,12 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{ ok
     });
 
     if (!accessToken) {
-      return { ok: false, error: 'Failed to obtain access token - check credentials' };
+      return { ok: false, error: 'Failed to obtain access token - check Client ID and Client Secret', details };
     }
+    details.oauth = true;
 
-    const testUrl = `${config.tenantApiBaseUrl}/settings/v2/tenant/${config.serviceTitanTenantId}/business-units`;
-    
-    const response = await fetch(testUrl, {
+    const settingsUrl = `${config.tenantApiBaseUrl}/settings/v2/tenant/${config.serviceTitanTenantId}/business-units`;
+    const settingsResponse = await fetch(settingsUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -185,12 +199,42 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{ ok
       },
     });
 
-    if (response.ok) {
-      return { ok: true };
-    } else {
-      return { ok: false, error: `API call failed: ${response.status} ${response.statusText}` };
+    if (!settingsResponse.ok) {
+      return { 
+        ok: false, 
+        error: `API access failed: ${settingsResponse.status} ${settingsResponse.statusText} - check Tenant ID`, 
+        details 
+      };
     }
+    details.apiAccess = true;
+
+    const bookingsUrl = `${config.tenantApiBaseUrl}/booking/v2/tenant/${config.serviceTitanTenantId}/booking-provider-tags`;
+    const bookingsResponse = await fetch(bookingsUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'ST-App-Key': config.clientId,
+      },
+    });
+
+    if (!bookingsResponse.ok) {
+      if (bookingsResponse.status === 403) {
+        return { 
+          ok: false, 
+          error: 'Bookings API access denied - ensure "bookings:write" scope is enabled for your app in the ServiceTitan Developer Portal', 
+          details 
+        };
+      }
+      return { 
+        ok: false, 
+        error: `Bookings API failed: ${bookingsResponse.status} ${bookingsResponse.statusText}`, 
+        details 
+      };
+    }
+    details.bookingsAccess = true;
+
+    return { ok: true, details };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    return { ok: false, error: error instanceof Error ? error.message : 'Unknown error', details };
   }
 }
