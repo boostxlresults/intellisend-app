@@ -38,6 +38,13 @@ async function getServiceTitanConfig(tenantId: string) {
   });
 }
 
+function getAuthBaseUrl(apiBaseUrl: string): string {
+  if (apiBaseUrl.includes('api-integration.servicetitan.io')) {
+    return 'https://auth-integration.servicetitan.io';
+  }
+  return 'https://auth.servicetitan.io';
+}
+
 async function getAccessToken(config: {
   tenantApiBaseUrl: string;
   serviceTitanTenantId: string;
@@ -52,7 +59,8 @@ async function getAccessToken(config: {
   }
 
   try {
-    const tokenUrl = `${config.tenantApiBaseUrl}/connect/token`;
+    const authBaseUrl = getAuthBaseUrl(config.tenantApiBaseUrl);
+    const tokenUrl = `${authBaseUrl}/connect/token`;
     
     const response = await fetch(tokenUrl, {
       method: 'POST',
