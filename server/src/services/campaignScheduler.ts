@@ -23,6 +23,10 @@ async function processScheduledCampaigns() {
       where: {
         status: 'SCHEDULED',
         startAt: { lte: now },
+        complianceConsentVerified: true,
+        complianceOptOutIncluded: true,
+        complianceQuietHoursOk: true,
+        complianceContentReviewed: true,
       },
       include: {
         segment: {
@@ -87,6 +91,7 @@ async function processScheduledCampaigns() {
       let suppressedCount = 0;
       let failedCount = 0;
       let skippedCount = 0;
+      let rateLimitedCount = 0;
       
       for (const member of campaign.segment.members) {
         const contact = member.contact;
@@ -161,6 +166,12 @@ async function processScheduledCampaigns() {
             continue;
           }
           
+          if (smsResult.rateLimited) {
+            rateLimitedCount++;
+            console.log(`Rate limited: ${contact.phone} for campaign ${campaign.name}`);
+            continue;
+          }
+          
           await prisma.message.create({
             data: {
               conversationId: conversation.id,
@@ -208,7 +219,7 @@ async function processScheduledCampaigns() {
         data: { status: 'COMPLETED' },
       });
       
-      console.log(`Campaign ${campaign.name} completed: ${sentCount} sent, ${suppressedCount} suppressed, ${skippedCount} already sent, ${failedCount} failed`);
+      console.log(`Campaign ${campaign.name} completed: ${sentCount} sent, ${suppressedCount} suppressed, ${rateLimitedCount} rate limited, ${skippedCount} already sent, ${failedCount} failed`);
     }
   } catch (error: any) {
     console.error('Campaign scheduler error:', error.message);

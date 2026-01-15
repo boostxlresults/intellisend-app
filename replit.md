@@ -145,3 +145,11 @@ The application runs with two servers:
   - CORS configured for cross-domain frontend/backend
   - Session cookies configured for cross-domain auth
   - Comprehensive deployment guide (DEPLOYMENT.md) for Vercel + Railway + Neon
+- **TCPA Compliance System**:
+  - Consent Management: ConsentRecord model with source tracking (WEB_FORM, SMS_KEYWORD, IMPORT, MANUAL, API), timestamps, IP address, user agent, and consent text
+  - Pre-Send Compliance Validation: Campaign approval checklist (consent verified, opt-out included, quiet hours check, content review) required before scheduling
+  - Complaint/Spam Analytics Dashboard: Alerts for high opt-out rates (>2%), complaint rates (>0.1%), carrier blocking (>10), with trend charts
+  - Per-Recipient Rate Limiting: 3 messages/day, 10/week, 25/month, 30s minimum between messages - integrated into SMS sending
+  - Enhanced Twilio Onboarding Wizard: 4-step A2P 10DLC guidance for proper carrier registration
+  - MessageEvent types extended: RATE_LIMITED, OPT_OUT, COMPLAINT, CARRIER_BLOCKED for accurate analytics
+  - Campaign scheduler enforces compliance checklist before processing

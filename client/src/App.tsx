@@ -13,6 +13,7 @@ import ConversationDetail from './pages/ConversationDetail';
 import KnowledgeBase from './pages/KnowledgeBase';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import TwilioSetup from './pages/TwilioSetup';
 import Login from './pages/Login';
 
 function App() {
@@ -157,6 +158,7 @@ function App() {
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/knowledge-base" element={<KnowledgeBase />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/twilio" element={<TwilioSetup />} />
             </Routes>
           )}
         </div>

@@ -4,12 +4,22 @@ import { api, Campaign, Segment } from '../api/client';
 
 type AiGoal = 'higher_reply_rate' | 'more_compliant' | 'shorter' | 'friendlier';
 
+interface ComplianceChecklist {
+  consentVerified: boolean;
+  optOutIncluded: boolean;
+  quietHoursOk: boolean;
+  contentReviewed: boolean;
+  notes: string;
+}
+
 export default function Campaigns() {
   const { selectedTenant } = useTenant();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showComplianceModal, setShowComplianceModal] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [campaignName, setCampaignName] = useState('');
   const [selectedSegment, setSelectedSegment] = useState('');
   const [messageBody, setMessageBody] = useState('');
@@ -17,6 +27,14 @@ export default function Campaigns() {
   const [aiGoal, setAiGoal] = useState<AiGoal>('higher_reply_rate');
   const [improvedMessage, setImprovedMessage] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [compliance, setCompliance] = useState<ComplianceChecklist>({
+    consentVerified: false,
+    optOutIncluded: false,
+    quietHoursOk: false,
+    contentReviewed: false,
+    notes: '',
+  });
 
   const fetchCampaigns = async () => {
     if (!selectedTenant) return;
@@ -87,16 +105,62 @@ export default function Campaigns() {
       });
       
       if (sendNow) {
-        await api.scheduleCampaign(selectedTenant.id, campaign.id);
+        setSelectedCampaign(campaign);
+        setCompliance({
+          consentVerified: false,
+          optOutIncluded: false,
+          quietHoursOk: false,
+          contentReviewed: false,
+          notes: '',
+        });
+        setShowCreateModal(false);
+        setShowComplianceModal(true);
+      } else {
+        setShowCreateModal(false);
+        fetchCampaigns();
       }
-      
-      setShowCreateModal(false);
-      fetchCampaigns();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Failed to create campaign: ' + message);
     }
   };
+
+  const openComplianceReview = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setCompliance({
+      consentVerified: (campaign as any).complianceConsentVerified || false,
+      optOutIncluded: (campaign as any).complianceOptOutIncluded || false,
+      quietHoursOk: (campaign as any).complianceQuietHoursOk || false,
+      contentReviewed: (campaign as any).complianceContentReviewed || false,
+      notes: (campaign as any).complianceNotes || '',
+    });
+    setShowComplianceModal(true);
+  };
+
+  const handleComplianceSubmit = async () => {
+    if (!selectedTenant || !selectedCampaign) return;
+    setComplianceLoading(true);
+    try {
+      await api.updateCampaignCompliance(selectedTenant.id, selectedCampaign.id, compliance);
+      
+      if (compliance.consentVerified && compliance.optOutIncluded && compliance.quietHoursOk && compliance.contentReviewed) {
+        await api.scheduleCampaign(selectedTenant.id, selectedCampaign.id);
+        alert('Compliance approved and campaign scheduled!');
+      } else {
+        alert('Compliance checklist saved. Complete all items to schedule the campaign.');
+      }
+      
+      setShowComplianceModal(false);
+      fetchCampaigns();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to update compliance: ' + message);
+    } finally {
+      setComplianceLoading(false);
+    }
+  };
+
+  const allComplianceChecked = compliance.consentVerified && compliance.optOutIncluded && compliance.quietHoursOk && compliance.contentReviewed;
 
   return (
     <div>
@@ -119,24 +183,45 @@ export default function Campaigns() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Status</th>
+                <th>Compliance</th>
                 <th>Segment</th>
-                <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {campaigns.map(campaign => (
-                <tr key={campaign.id}>
-                  <td>{campaign.name}</td>
-                  <td>{campaign.type}</td>
-                  <td>
-                    <span className={`status-badge ${campaign.status.toLowerCase()}`}>
-                      {campaign.status}
-                    </span>
-                  </td>
-                  <td>{campaign.segment?.name || '-'}</td>
-                  <td>{new Date(campaign.id).toLocaleDateString()}</td>
-                </tr>
-              ))}
+              {campaigns.map(campaign => {
+                const c = campaign as any;
+                const complianceComplete = c.complianceConsentVerified && c.complianceOptOutIncluded && c.complianceQuietHoursOk && c.complianceContentReviewed;
+                return (
+                  <tr key={campaign.id}>
+                    <td>{campaign.name}</td>
+                    <td>{campaign.type}</td>
+                    <td>
+                      <span className={`status-badge ${campaign.status.toLowerCase()}`}>
+                        {campaign.status}
+                      </span>
+                    </td>
+                    <td>
+                      {complianceComplete ? (
+                        <span style={{ color: '#38a169' }}>&#10003; Approved</span>
+                      ) : (
+                        <span style={{ color: '#ed8936' }}>Pending</span>
+                      )}
+                    </td>
+                    <td>{campaign.segment?.name || '-'}</td>
+                    <td>
+                      {campaign.status === 'DRAFT' && (
+                        <button
+                          className="btn btn-small btn-secondary"
+                          onClick={() => openComplianceReview(campaign)}
+                        >
+                          {complianceComplete ? 'Schedule' : 'Review & Send'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -235,7 +320,120 @@ export default function Campaigns() {
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
               <button className="btn btn-secondary" onClick={() => handleCreateCampaign(false)}>Save as Draft</button>
-              <button className="btn btn-primary" onClick={() => handleCreateCampaign(true)}>Send Now</button>
+              <button className="btn btn-primary" onClick={() => handleCreateCampaign(true)}>Review & Send</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showComplianceModal && selectedCampaign && (
+        <div className="modal-overlay" onClick={() => setShowComplianceModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h3>TCPA Compliance Review</h3>
+            <p style={{ color: '#718096', marginBottom: '16px' }}>
+              Complete this checklist before sending. All items are required for US compliance.
+            </p>
+
+            <div style={{ background: '#f7fafc', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
+              <h4 style={{ marginBottom: '12px' }}>Campaign: {selectedCampaign.name}</h4>
+              {selectedCampaign.steps?.[0] && (
+                <div style={{ background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <strong>Message Preview:</strong>
+                  <p style={{ marginTop: '8px', whiteSpace: 'pre-wrap' }}>{selectedCampaign.steps[0].bodyTemplate}</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
+                <input
+                  type="checkbox"
+                  id="consentVerified"
+                  checked={compliance.consentVerified}
+                  onChange={(e) => setCompliance(prev => ({ ...prev, consentVerified: e.target.checked }))}
+                />
+                <label htmlFor="consentVerified" style={{ marginBottom: 0 }}>
+                  <strong>Prior Express Consent Verified</strong>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                    I confirm that all recipients have provided prior express written consent to receive SMS marketing messages, per TCPA requirements.
+                  </p>
+                </label>
+              </div>
+
+              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
+                <input
+                  type="checkbox"
+                  id="optOutIncluded"
+                  checked={compliance.optOutIncluded}
+                  onChange={(e) => setCompliance(prev => ({ ...prev, optOutIncluded: e.target.checked }))}
+                />
+                <label htmlFor="optOutIncluded" style={{ marginBottom: 0 }}>
+                  <strong>Opt-Out Instructions Included</strong>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                    The message includes clear opt-out instructions (e.g., "Reply STOP to unsubscribe"). Note: IntelliSend automatically appends this.
+                  </p>
+                </label>
+              </div>
+
+              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
+                <input
+                  type="checkbox"
+                  id="quietHoursOk"
+                  checked={compliance.quietHoursOk}
+                  onChange={(e) => setCompliance(prev => ({ ...prev, quietHoursOk: e.target.checked }))}
+                />
+                <label htmlFor="quietHoursOk" style={{ marginBottom: 0 }}>
+                  <strong>Quiet Hours Respected</strong>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                    This campaign will not send messages before 8am or after 9pm in the recipient's local time zone (TCPA requirement).
+                  </p>
+                </label>
+              </div>
+
+              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
+                <input
+                  type="checkbox"
+                  id="contentReviewed"
+                  checked={compliance.contentReviewed}
+                  onChange={(e) => setCompliance(prev => ({ ...prev, contentReviewed: e.target.checked }))}
+                />
+                <label htmlFor="contentReviewed" style={{ marginBottom: 0 }}>
+                  <strong>Message Content Reviewed</strong>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                    I have reviewed the message content and confirm it is appropriate, not deceptive, and complies with carrier guidelines.
+                  </p>
+                </label>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Notes (optional)</label>
+              <textarea
+                value={compliance.notes}
+                onChange={(e) => setCompliance(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Any additional notes about this compliance review..."
+                rows={2}
+              />
+            </div>
+
+            {!allComplianceChecked && (
+              <div style={{ background: '#fffaf0', padding: '12px', borderRadius: '6px', marginBottom: '16px', borderLeft: '4px solid #ed8936' }}>
+                <strong style={{ color: '#c05621' }}>All items must be checked to proceed</strong>
+                <p style={{ color: '#744210', fontSize: '13px', marginTop: '4px' }}>
+                  Complete all compliance requirements before scheduling this campaign.
+                </p>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowComplianceModal(false)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleComplianceSubmit}
+                disabled={complianceLoading || !allComplianceChecked}
+              >
+                {complianceLoading ? 'Processing...' : 'Approve & Schedule Campaign'}
+              </button>
             </div>
           </div>
         </div>

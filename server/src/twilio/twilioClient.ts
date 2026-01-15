@@ -1,5 +1,6 @@
 import Twilio from 'twilio';
 import { prisma } from '../index';
+import { checkRateLimit } from '../services/rateLimiter';
 
 const globalAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const globalAuthToken = process.env.TWILIO_AUTH_TOKEN;
@@ -78,6 +79,7 @@ export interface SendSmsOptions {
   body: string;
   statusCallbackUrl?: string;
   skipOptOutFooter?: boolean;
+  skipRateLimitCheck?: boolean;
   contactId?: string;
   campaignId?: string;
   messageId?: string;
@@ -88,7 +90,7 @@ const OPT_OUT_FOOTER = '\n\nReply STOP to unsubscribe.';
 export async function logMessageEvent(
   tenantId: string,
   phone: string,
-  eventType: 'SENT' | 'DELIVERED' | 'FAILED' | 'SUPPRESSED' | 'QUIET_HOURS_BLOCKED',
+  eventType: 'SENT' | 'DELIVERED' | 'FAILED' | 'SUPPRESSED' | 'QUIET_HOURS_BLOCKED' | 'RATE_LIMITED' | 'OPT_OUT' | 'COMPLAINT' | 'CARRIER_BLOCKED',
   options?: { contactId?: string; messageId?: string; campaignId?: string; errorCode?: string; errorMessage?: string }
 ) {
   try {
@@ -114,6 +116,7 @@ export interface SendSmsResult {
   messageSid?: string;
   error?: string;
   suppressed?: boolean;
+  rateLimited?: boolean;
 }
 
 export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSmsResult> {
@@ -154,6 +157,23 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
         suppressed: true,
         error: `Phone number ${options.toNumber} is suppressed: ${suppression.reason}`,
       };
+    }
+
+    if (!options.skipRateLimitCheck) {
+      const rateLimitResult = await checkRateLimit(options.tenantId, options.toNumber);
+      if (!rateLimitResult.allowed) {
+        console.log(`RATE_LIMITED: Not sending to ${options.toNumber} for tenant ${options.tenantId} (${rateLimitResult.reason})`);
+        await logMessageEvent(options.tenantId, options.toNumber, 'RATE_LIMITED', {
+          contactId: options.contactId,
+          campaignId: options.campaignId,
+          errorMessage: rateLimitResult.reason,
+        });
+        return {
+          success: false,
+          rateLimited: true,
+          error: rateLimitResult.reason,
+        };
+      }
     }
 
     const twilioResult = await getClientForTenant(options.tenantId);

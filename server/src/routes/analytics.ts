@@ -239,4 +239,135 @@ router.get('/:tenantId/analytics/opt-outs', async (req, res) => {
   }
 });
 
+router.get('/:tenantId/analytics/compliance', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const range = (req.query.range as DateRange) || '30d';
+    const dateFilter = getDateFilter(range);
+    const dateWhere = dateFilter ? { createdAt: { gte: dateFilter } } : {};
+
+    const [
+      totalOptOuts,
+      totalComplaints,
+      totalCarrierBlocked,
+      totalQuietHoursBlocked,
+      totalSuppressed,
+      totalRateLimited,
+      totalSent,
+      recentOptOuts,
+    ] = await Promise.all([
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'OPT_OUT', ...dateWhere },
+      }),
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'COMPLAINT', ...dateWhere },
+      }),
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'CARRIER_BLOCKED', ...dateWhere },
+      }),
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'QUIET_HOURS_BLOCKED', ...dateWhere },
+      }),
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'SUPPRESSED', ...dateWhere },
+      }),
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'RATE_LIMITED', ...dateWhere },
+      }),
+      prisma.messageEvent.count({
+        where: { tenantId, eventType: 'SENT', ...dateWhere },
+      }),
+      prisma.suppression.findMany({
+        where: { tenantId, ...dateWhere },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    const optOutRate = totalSent > 0 ? ((totalOptOuts / totalSent) * 100).toFixed(2) : '0';
+    const complaintRate = totalSent > 0 ? ((totalComplaints / totalSent) * 100).toFixed(4) : '0';
+    const blockedRate = totalSent > 0 ? (((totalCarrierBlocked + totalSuppressed) / totalSent) * 100).toFixed(2) : '0';
+
+    const optOutThreshold = 2.0;
+    const complaintThreshold = 0.1;
+    
+    const alerts: { type: string; message: string; severity: 'warning' | 'critical' }[] = [];
+    
+    if (parseFloat(optOutRate) > optOutThreshold) {
+      alerts.push({
+        type: 'HIGH_OPT_OUT_RATE',
+        message: `Opt-out rate (${optOutRate}%) exceeds ${optOutThreshold}% threshold. Review your messaging strategy.`,
+        severity: parseFloat(optOutRate) > optOutThreshold * 2 ? 'critical' : 'warning',
+      });
+    }
+    
+    if (parseFloat(complaintRate) > complaintThreshold) {
+      alerts.push({
+        type: 'HIGH_COMPLAINT_RATE',
+        message: `Complaint rate (${complaintRate}%) exceeds ${complaintThreshold}% threshold. This may affect your sender reputation.`,
+        severity: 'critical',
+      });
+    }
+
+    if (totalCarrierBlocked > 10) {
+      alerts.push({
+        type: 'CARRIER_BLOCKING',
+        message: `${totalCarrierBlocked} messages were blocked by carriers. Check your A2P 10DLC registration status.`,
+        severity: totalCarrierBlocked > 50 ? 'critical' : 'warning',
+      });
+    }
+
+    const daysBack = range === 'today' ? 1 : range === '7d' ? 7 : range === '30d' ? 30 : 90;
+    const optOutTrend: { date: string; optOuts: number; complaints: number; blocked: number }[] = [];
+
+    for (let i = Math.min(daysBack, 14) - 1; i >= 0; i--) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - i);
+      
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const [optOuts, complaints, blocked] = await Promise.all([
+        prisma.suppression.count({
+          where: { tenantId, reason: 'STOP', createdAt: { gte: dayStart, lte: dayEnd } },
+        }),
+        prisma.messageEvent.count({
+          where: { tenantId, eventType: 'COMPLAINT', createdAt: { gte: dayStart, lte: dayEnd } },
+        }),
+        prisma.messageEvent.count({
+          where: { tenantId, eventType: 'CARRIER_BLOCKED', createdAt: { gte: dayStart, lte: dayEnd } },
+        }),
+      ]);
+
+      optOutTrend.push({
+        date: dayStart.toISOString().split('T')[0],
+        optOuts,
+        complaints,
+        blocked,
+      });
+    }
+
+    res.json({
+      summary: {
+        totalOptOuts,
+        totalComplaints,
+        totalCarrierBlocked,
+        totalQuietHoursBlocked,
+        totalSuppressed,
+        totalRateLimited,
+        optOutRate: parseFloat(optOutRate),
+        complaintRate: parseFloat(complaintRate),
+        blockedRate: parseFloat(blockedRate),
+      },
+      alerts,
+      trend: optOutTrend,
+      recentOptOuts,
+    });
+  } catch (error: any) {
+    console.error('Error fetching compliance analytics:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

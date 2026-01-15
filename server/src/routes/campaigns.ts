@@ -97,6 +97,52 @@ router.get('/:tenantId/campaigns/:campaignId', async (req, res) => {
   }
 });
 
+router.post('/:tenantId/campaigns/:campaignId/compliance', async (req, res) => {
+  try {
+    const { tenantId, campaignId } = req.params;
+    const { 
+      consentVerified, 
+      optOutIncluded, 
+      quietHoursOk, 
+      contentReviewed, 
+      notes 
+    } = req.body;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const allChecked = consentVerified && optOutIncluded && quietHoursOk && contentReviewed;
+    
+    const updated = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        complianceCheckedAt: new Date(),
+        complianceCheckedBy: (req as any).session?.userId || 'unknown',
+        complianceConsentVerified: consentVerified || false,
+        complianceOptOutIncluded: optOutIncluded || false,
+        complianceQuietHoursOk: quietHoursOk || false,
+        complianceContentReviewed: contentReviewed || false,
+        complianceNotes: notes,
+        status: allChecked ? 'DRAFT' : campaign.status,
+      },
+      include: {
+        segment: true,
+        steps: true,
+      },
+    });
+    
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error updating compliance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
   try {
     const { tenantId, campaignId } = req.params;
@@ -108,6 +154,16 @@ router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
     
     if (!campaign) {
       return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    if (!campaign.complianceConsentVerified || 
+        !campaign.complianceOptOutIncluded || 
+        !campaign.complianceQuietHoursOk || 
+        !campaign.complianceContentReviewed) {
+      return res.status(400).json({ 
+        error: 'Campaign must pass compliance checklist before scheduling. Please complete the compliance review first.',
+        complianceRequired: true,
+      });
     }
     
     const updated = await prisma.campaign.update({

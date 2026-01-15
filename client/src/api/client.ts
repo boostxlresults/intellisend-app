@@ -410,4 +410,68 @@ export const api = {
     request<{ success: boolean; accountName?: string; status?: string; error?: string }>(`${API_BASE}/tenants/${tenantId}/integrations/twilio/test`, {
       method: 'POST',
     }),
+
+  updateCampaignCompliance: (tenantId: string, campaignId: string, data: {
+    consentVerified: boolean;
+    optOutIncluded: boolean;
+    quietHoursOk: boolean;
+    contentReviewed: boolean;
+    notes?: string;
+  }) =>
+    request<Campaign>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/compliance`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getConsentRecords: (tenantId: string, options?: { contactId?: string; phone?: string }) =>
+    request<Array<{
+      id: string;
+      tenantId: string;
+      contactId: string;
+      phone: string;
+      consentGiven: boolean;
+      consentSource: string;
+      sourceDetails?: string;
+      consentText?: string;
+      givenAt: string;
+      revokedAt?: string;
+    }>>(`${API_BASE}/tenants/${tenantId}/consent?${new URLSearchParams(options as Record<string, string>).toString()}`),
+
+  createConsentRecord: (tenantId: string, data: {
+    contactId: string;
+    phone: string;
+    consentSource: string;
+    sourceDetails?: string;
+    consentText?: string;
+  }) =>
+    request<{ id: string }>(`${API_BASE}/tenants/${tenantId}/consent`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getConsentStats: (tenantId: string) =>
+    request<{
+      totalConsented: number;
+      totalRevoked: number;
+      recentConsents: number;
+      bySource: Array<{ source: string; count: number }>;
+    }>(`${API_BASE}/tenants/${tenantId}/consent/stats`),
+
+  getComplianceAnalytics: (tenantId: string, range: string = '30d') =>
+    request<{
+      summary: {
+        totalOptOuts: number;
+        totalComplaints: number;
+        totalCarrierBlocked: number;
+        totalQuietHoursBlocked: number;
+        totalSuppressed: number;
+        totalRateLimited: number;
+        optOutRate: number;
+        complaintRate: number;
+        blockedRate: number;
+      };
+      alerts: Array<{ type: string; message: string; severity: 'warning' | 'critical' }>;
+      trend: Array<{ date: string; optOuts: number; complaints: number; blocked: number }>;
+      recentOptOuts: Array<{ id: string; phone: string; reason: string; createdAt: string }>;
+    }>(`${API_BASE}/tenants/${tenantId}/analytics/compliance?range=${range}`),
 };

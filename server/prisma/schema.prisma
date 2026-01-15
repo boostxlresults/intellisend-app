@@ -215,10 +215,12 @@ enum CampaignType {
 
 enum CampaignStatus {
   DRAFT
+  PENDING_APPROVAL
   SCHEDULED
   RUNNING
   PAUSED
   COMPLETED
+  REJECTED
 }
 
 model Campaign {
@@ -232,6 +234,14 @@ model Campaign {
   startAt     DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  
+  complianceCheckedAt     DateTime?
+  complianceCheckedBy     String?
+  complianceConsentVerified Boolean @default(false)
+  complianceOptOutIncluded  Boolean @default(false)
+  complianceQuietHoursOk   Boolean @default(false)
+  complianceContentReviewed Boolean @default(false)
+  complianceNotes         String?
 
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   segment  Segment?       @relation(fields: [segmentId], references: [id], onDelete: SetNull)
@@ -346,6 +356,37 @@ enum MessageEventType {
   FAILED
   SUPPRESSED
   QUIET_HOURS_BLOCKED
+  RATE_LIMITED
+  OPT_OUT
+  COMPLAINT
+  CARRIER_BLOCKED
+}
+
+enum ConsentSource {
+  IMPORT
+  WEB_FORM
+  SMS_KEYWORD
+  MANUAL
+  API
+}
+
+model ConsentRecord {
+  id            String        @id @default(uuid())
+  tenantId      String
+  contactId     String
+  phone         String
+  consentGiven  Boolean       @default(true)
+  consentSource ConsentSource
+  sourceDetails String?
+  ipAddress     String?
+  userAgent     String?
+  consentText   String?
+  givenAt       DateTime      @default(now())
+  revokedAt     DateTime?
+  createdAt     DateTime      @default(now())
+
+  @@index([tenantId, phone])
+  @@index([contactId])
 }
 
 model MessageEvent {

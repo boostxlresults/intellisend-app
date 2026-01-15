@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import { api, TenantNumber, Suppression, AiPersona, TenantSettings } from '../api/client';
 
@@ -20,6 +21,7 @@ const TIMEZONES = [
 ];
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { selectedTenant, refreshTenants } = useTenant();
   const [numbers, setNumbers] = useState<TenantNumber[]>([]);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
@@ -379,11 +381,13 @@ export default function Settings() {
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3>Twilio Integration</h3>
-              {!twilioIntegration?.twilioConfigured && (
-                <button className="btn btn-primary btn-small" onClick={() => setShowTwilioSetup(true)}>
-                  Configure Twilio
-                </button>
-              )}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {!twilioIntegration?.twilioConfigured && (
+                  <button className="btn btn-primary btn-small" onClick={() => navigate('/settings/twilio')}>
+                    Setup Wizard
+                  </button>
+                )}
+              </div>
             </div>
             {twilioIntegration?.twilioConfigured ? (
               <div>
