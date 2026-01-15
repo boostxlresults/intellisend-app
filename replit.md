@@ -153,3 +153,18 @@ The application runs with two servers:
   - Enhanced Twilio Onboarding Wizard: 4-step A2P 10DLC guidance for proper carrier registration
   - MessageEvent types extended: RATE_LIMITED, OPT_OUT, COMPLAINT, CARRIER_BLOCKED for accurate analytics
   - Campaign scheduler enforces compliance checklist before processing
+- **Send Interval Jitter System**:
+  - OutboundMessageQueue table for queue-based sending with status tracking
+  - Tenant-configurable send rate (messages per minute, 1-120 range)
+  - Configurable jitter range (min/max milliseconds) for random spacing between messages
+  - Queue dispatcher processes messages with intelligent staggering to avoid carrier spam detection
+  - Campaign scheduler queues messages instead of direct sending
+  - UI in Settings page for send rate and jitter configuration
+- **Enhanced Multi-Tag System**:
+  - Normalized Tag model with tenant-scoped unique names and optional colors
+  - ContactTag junction table for many-to-many contact-tag relationships
+  - Contacts can have multiple tags (e.g., "homeowner", "85742", "solar owner")
+  - CSV import supports multiple tags per contact and upserts existing tags
+  - Tag management API (create, list, delete tags)
+  - Segment builder with AND/OR/NONE tag filtering logic
+  - Segment preview endpoint to preview contacts matching tag criteria

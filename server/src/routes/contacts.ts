@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import Papa from 'papaparse';
 import { prisma } from '../index';
+import { upsertTagsForContact } from './tags';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -9,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/:tenantId/contacts', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { tag, search, page = '1', limit = '50' } = req.query;
+    const { tag, tagId, search, page = '1', limit = '50' } = req.query;
     
     const pageNum = parseInt(page as string, 10);
     const limitNum = parseInt(limit as string, 10);
@@ -17,9 +18,15 @@ router.get('/:tenantId/contacts', async (req, res) => {
     
     const where: any = { tenantId };
     
-    if (tag) {
+    if (tagId) {
       where.tags = {
-        some: { tag: tag as string },
+        some: { tagId: tagId as string },
+      };
+    } else if (tag) {
+      where.tags = {
+        some: { 
+          tag: { name: tag as string } 
+        },
       };
     }
     
@@ -35,7 +42,11 @@ router.get('/:tenantId/contacts', async (req, res) => {
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
-        include: { tags: true },
+        include: { 
+          tags: {
+            include: { tag: true },
+          },
+        },
         skip,
         take: limitNum,
         orderBy: { createdAt: 'desc' },
@@ -43,8 +54,17 @@ router.get('/:tenantId/contacts', async (req, res) => {
       prisma.contact.count({ where }),
     ]);
     
+    const formattedContacts = contacts.map(c => ({
+      ...c,
+      tags: c.tags.map(ct => ({
+        id: ct.tagId,
+        name: ct.tag.name,
+        color: ct.tag.color,
+      })),
+    }));
+    
     res.json({
-      contacts,
+      contacts: formattedContacts,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -95,14 +115,21 @@ router.post('/:tenantId/contacts', async (req, res) => {
         customerType: customerType || 'LEAD',
         consentSource,
         consentTimestamp: consentSource ? new Date() : null,
-        tags: tags ? {
-          create: tags.map((tag: string) => ({ tag })),
-        } : undefined,
       },
-      include: { tags: true },
     });
     
-    res.status(201).json(contact);
+    if (tags && Array.isArray(tags) && tags.length > 0) {
+      await upsertTagsForContact(tenantId, contact.id, tags);
+    }
+    
+    const result = await prisma.contact.findUnique({
+      where: { id: contact.id },
+      include: { 
+        tags: { include: { tag: true } },
+      },
+    });
+    
+    res.status(201).json(result);
   } catch (error: any) {
     console.error('Error creating contact:', error);
     res.status(500).json({ error: error.message });
@@ -173,12 +200,13 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
       
       try {
         const allTags = [...(c.tags || []), ...globalTags];
-        const uniqueTags = [...new Set(allTags)];
+        const uniqueTags = [...new Set(allTags)].filter(Boolean);
         
         const existing = await prisma.contact.findFirst({
           where: { tenantId, phone: c.phone },
-          include: { tags: true },
         });
+        
+        let contactId: string;
         
         if (existing) {
           await prisma.contact.update({
@@ -193,17 +221,9 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
               zip: c.zip || existing.zip,
             },
           });
-          
-          const existingTagNames = existing.tags.map(t => t.tag);
-          const newTags = uniqueTags.filter(t => !existingTagNames.includes(t));
-          
-          if (newTags.length > 0) {
-            await prisma.contactTag.createMany({
-              data: newTags.map(tag => ({ contactId: existing.id, tag })),
-            });
-          }
+          contactId = existing.id;
         } else {
-          await prisma.contact.create({
+          const newContact = await prisma.contact.create({
             data: {
               tenantId,
               firstName: c.firstName || 'Unknown',
@@ -218,11 +238,13 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
               customerType: c.customerType || 'LEAD',
               consentSource: c.consentSource || 'import',
               consentTimestamp: new Date(),
-              tags: uniqueTags.length > 0 ? {
-                create: uniqueTags.map(tag => ({ tag })),
-              } : undefined,
             },
           });
+          contactId = newContact.id;
+        }
+        
+        if (uniqueTags.length > 0) {
+          await upsertTagsForContact(tenantId, contactId, uniqueTags);
         }
         
         imported++;
@@ -251,7 +273,9 @@ router.get('/:tenantId/contacts/:contactId', async (req, res) => {
     const contact = await prisma.contact.findFirst({
       where: { id: contactId, tenantId },
       include: {
-        tags: true,
+        tags: {
+          include: { tag: true },
+        },
         conversations: {
           orderBy: { lastMessageAt: 'desc' },
           take: 5,
@@ -263,88 +287,18 @@ router.get('/:tenantId/contacts/:contactId', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found' });
     }
     
-    res.json(contact);
+    const formattedContact = {
+      ...contact,
+      tags: contact.tags.map(ct => ({
+        id: ct.tagId,
+        name: ct.tag.name,
+        color: ct.tag.color,
+      })),
+    };
+    
+    res.json(formattedContact);
   } catch (error: any) {
     console.error('Error fetching contact:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/:tenantId/contacts/:contactId/tags', async (req, res) => {
-  try {
-    const { tenantId, contactId } = req.params;
-    const { tag } = req.body;
-    
-    if (!tag) {
-      return res.status(400).json({ error: 'tag is required' });
-    }
-    
-    const contact = await prisma.contact.findFirst({
-      where: { id: contactId, tenantId },
-    });
-    
-    if (!contact) {
-      return res.status(404).json({ error: 'Contact not found' });
-    }
-    
-    const existingTag = await prisma.contactTag.findFirst({
-      where: { contactId, tag },
-    });
-    
-    if (existingTag) {
-      return res.status(400).json({ error: 'Tag already exists' });
-    }
-    
-    const newTag = await prisma.contactTag.create({
-      data: { contactId, tag },
-    });
-    
-    res.status(201).json(newTag);
-  } catch (error: any) {
-    console.error('Error adding tag:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.delete('/:tenantId/contacts/:contactId/tags/:tag', async (req, res) => {
-  try {
-    const { tenantId, contactId, tag } = req.params;
-    
-    const contact = await prisma.contact.findFirst({
-      where: { id: contactId, tenantId },
-    });
-    
-    if (!contact) {
-      return res.status(404).json({ error: 'Contact not found' });
-    }
-    
-    await prisma.contactTag.deleteMany({
-      where: { contactId, tag },
-    });
-    
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Error removing tag:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.get('/:tenantId/tags', async (req, res) => {
-  try {
-    const { tenantId } = req.params;
-    
-    const tags = await prisma.contactTag.findMany({
-      where: {
-        contact: { tenantId },
-      },
-      distinct: ['tag'],
-      select: { tag: true },
-      orderBy: { tag: 'asc' },
-    });
-    
-    res.json(tags.map(t => t.tag));
-  } catch (error: any) {
-    console.error('Error fetching tags:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -1,7 +1,8 @@
 import { prisma } from '../index';
-import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
+import { checkSuppression } from '../twilio/twilioClient';
 import { generateImprovedMessage } from '../ai/aiEngine';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
+import { queueCampaignMessages } from './queueDispatcher';
 
 const SCHEDULER_INTERVAL_MS = 60000;
 
@@ -87,11 +88,15 @@ async function processScheduledCampaigns() {
         continue;
       }
       
-      let sentCount = 0;
-      let suppressedCount = 0;
-      let failedCount = 0;
+      const messagesToQueue: Array<{
+        contactId: string;
+        phone: string;
+        body: string;
+        fromNumber: string;
+      }> = [];
+      
       let skippedCount = 0;
-      let rateLimitedCount = 0;
+      let suppressedCount = 0;
       
       for (const member of campaign.segment.members) {
         const contact = member.contact;
@@ -107,7 +112,21 @@ async function processScheduledCampaigns() {
           });
           
           if (existingDelivery) {
-            console.log(`Skipping ${contact.phone}: already sent campaign step ${firstStep.id}`);
+            skippedCount++;
+            continue;
+          }
+          
+          const alreadyQueued = await prisma.outboundMessageQueue.findFirst({
+            where: {
+              tenantId: campaign.tenantId,
+              contactId: contact.id,
+              campaignId: campaign.id,
+              campaignStepId: firstStep.id,
+              status: { in: ['PENDING', 'PROCESSING'] },
+            },
+          });
+          
+          if (alreadyQueued) {
             skippedCount++;
             continue;
           }
@@ -115,7 +134,6 @@ async function processScheduledCampaigns() {
           const isSuppressed = await checkSuppression(campaign.tenantId, contact.phone);
           
           if (isSuppressed) {
-            console.log(`SUPPRESSED: Skipping ${contact.phone} for campaign ${campaign.name}`);
             suppressedCount++;
             continue;
           }
@@ -136,90 +154,33 @@ async function processScheduledCampaigns() {
             messageBody = improved.text;
           }
           
-          let conversation = await prisma.conversation.findFirst({
-            where: {
-              tenantId: campaign.tenantId,
-              contactId: contact.id,
-              status: 'OPEN',
-            },
-          });
-          
-          if (!conversation) {
-            conversation = await prisma.conversation.create({
-              data: {
-                tenantId: campaign.tenantId,
-                contactId: contact.id,
-                status: 'OPEN',
-              },
-            });
-          }
-          
-          const smsResult = await sendSmsForTenant({
-            tenantId: campaign.tenantId,
-            fromNumber: sendContext.fromNumber,
-            toNumber: contact.phone,
+          messagesToQueue.push({
+            contactId: contact.id,
+            phone: contact.phone,
             body: messageBody,
+            fromNumber: sendContext.fromNumber,
           });
-          
-          if (smsResult.suppressed) {
-            suppressedCount++;
-            continue;
-          }
-          
-          if (smsResult.rateLimited) {
-            rateLimitedCount++;
-            console.log(`Rate limited: ${contact.phone} for campaign ${campaign.name}`);
-            continue;
-          }
-          
-          await prisma.message.create({
-            data: {
-              conversationId: conversation.id,
-              tenantId: campaign.tenantId,
-              contactId: contact.id,
-              direction: 'OUTBOUND',
-              channel: 'SMS',
-              body: messageBody,
-              fromNumber: sendContext.fromNumber,
-              toNumber: contact.phone,
-              twilioMessageSid: smsResult.messageSid,
-              status: smsResult.success ? 'sent' : 'failed',
-              errorCode: smsResult.error,
-              isAiGenerated: firstStep.useAiAssist,
-              campaignId: campaign.id,
-              campaignStepId: firstStep.id,
-            },
-          });
-          
-          await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { lastMessageAt: new Date() },
-          });
-          
-          await prisma.contact.update({
-            where: { id: contact.id },
-            data: { lastContactedAt: new Date() },
-          });
-          
-          if (smsResult.success) {
-            sentCount++;
-            console.log(`Sent campaign message to ${contact.phone}`);
-          } else {
-            failedCount++;
-            console.error(`Failed to send to ${contact.phone}: ${smsResult.error}`);
-          }
         } catch (error: any) {
-          failedCount++;
-          console.error(`Error processing ${contact.phone}:`, error.message);
+          console.error(`Error preparing ${contact.phone}:`, error.message);
         }
+      }
+      
+      if (messagesToQueue.length > 0) {
+        const result = await queueCampaignMessages(
+          campaign.tenantId,
+          campaign.id,
+          firstStep.id,
+          messagesToQueue
+        );
+        console.log(`Campaign ${campaign.name}: queued ${result.queued} messages, ${skippedCount} skipped, ${suppressedCount} suppressed`);
+      } else {
+        console.log(`Campaign ${campaign.name}: no new messages to queue (${skippedCount} skipped, ${suppressedCount} suppressed)`);
       }
       
       await prisma.campaign.update({
         where: { id: campaign.id },
         data: { status: 'COMPLETED' },
       });
-      
-      console.log(`Campaign ${campaign.name} completed: ${sentCount} sent, ${suppressedCount} suppressed, ${rateLimitedCount} rate limited, ${skippedCount} already sent, ${failedCount} failed`);
     }
   } catch (error: any) {
     console.error('Campaign scheduler error:', error.message);

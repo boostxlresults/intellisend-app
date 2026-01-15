@@ -76,6 +76,9 @@ export default function Settings() {
         quietHoursStart: formData.get('quietHoursStart') as unknown as number,
         quietHoursEnd: formData.get('quietHoursEnd') as unknown as number,
         defaultFromNumberId: formData.get('defaultFromNumberId') as string || undefined,
+        sendRatePerMinute: parseInt(formData.get('sendRatePerMinute') as string) || 30,
+        sendJitterMinMs: parseInt(formData.get('sendJitterMinMs') as string) || 1000,
+        sendJitterMaxMs: parseInt(formData.get('sendJitterMaxMs') as string) || 5000,
       });
       const refreshedSettings = await api.getTenantSettings(selectedTenant.id);
       setTenantSettings(refreshedSettings);
@@ -264,6 +267,44 @@ export default function Settings() {
               <p style={{ fontSize: '12px', color: '#718096', marginBottom: '16px' }}>
                 No outbound SMS will be sent during quiet hours (overnight). For 8pm-8am, set Start=20:00 and End=08:00.
               </p>
+              
+              <h4 style={{ marginTop: '24px', marginBottom: '12px', color: '#2d3748' }}>Send Rate Settings</h4>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Messages Per Minute</label>
+                  <input 
+                    type="number" 
+                    name="sendRatePerMinute" 
+                    defaultValue={tenantSettings?.sendRatePerMinute || 30}
+                    min="1"
+                    max="120"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Min Jitter (ms)</label>
+                  <input 
+                    type="number" 
+                    name="sendJitterMinMs" 
+                    defaultValue={tenantSettings?.sendJitterMinMs || 1000}
+                    min="0"
+                    max="30000"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Max Jitter (ms)</label>
+                  <input 
+                    type="number" 
+                    name="sendJitterMaxMs" 
+                    defaultValue={tenantSettings?.sendJitterMaxMs || 5000}
+                    min="1000"
+                    max="60000"
+                  />
+                </div>
+              </div>
+              <p style={{ fontSize: '12px', color: '#718096', marginBottom: '16px' }}>
+                Controls message spacing to avoid carrier spam detection. Jitter adds random delay between messages. Default: 30 messages/minute with 1-5 second random spacing.
+              </p>
+              
               <div className="form-group">
                 <label>Default From Number</label>
                 <select 

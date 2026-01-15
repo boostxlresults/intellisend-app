@@ -3,6 +3,66 @@ import { prisma } from '../index';
 
 const router = Router();
 
+interface TagFilter {
+  mode: 'ALL' | 'ANY' | 'NONE';
+  tagIds: string[];
+}
+
+async function getContactsByTagFilter(
+  tenantId: string,
+  filter: TagFilter
+): Promise<string[]> {
+  if (!filter.tagIds || filter.tagIds.length === 0) {
+    const allContacts = await prisma.contact.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    return allContacts.map(c => c.id);
+  }
+
+  if (filter.mode === 'ANY') {
+    const contacts = await prisma.contact.findMany({
+      where: {
+        tenantId,
+        tags: {
+          some: { tagId: { in: filter.tagIds } },
+        },
+      },
+      select: { id: true },
+    });
+    return contacts.map(c => c.id);
+  }
+
+  if (filter.mode === 'NONE') {
+    const contacts = await prisma.contact.findMany({
+      where: {
+        tenantId,
+        NOT: {
+          tags: {
+            some: { tagId: { in: filter.tagIds } },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    return contacts.map(c => c.id);
+  }
+
+  const contacts = await prisma.contact.findMany({
+    where: { tenantId },
+    include: {
+      tags: { select: { tagId: true } },
+    },
+  });
+
+  return contacts
+    .filter(c => {
+      const contactTagIds = c.tags.map(t => t.tagId);
+      return filter.tagIds.every(tid => contactTagIds.includes(tid));
+    })
+    .map(c => c.id);
+}
+
 router.get('/:tenantId/segments', async (req, res) => {
   try {
     const { tenantId } = req.params;
@@ -27,10 +87,16 @@ router.get('/:tenantId/segments', async (req, res) => {
 router.post('/:tenantId/segments', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { name, type, contactIds, definitionJson } = req.body;
+    const { name, type, contactIds, tagFilter } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
+    }
+    
+    let memberContactIds = contactIds || [];
+    
+    if (tagFilter && tagFilter.tagIds && tagFilter.tagIds.length > 0) {
+      memberContactIds = await getContactsByTagFilter(tenantId, tagFilter);
     }
     
     const segment = await prisma.segment.create({
@@ -38,9 +104,9 @@ router.post('/:tenantId/segments', async (req, res) => {
         tenantId,
         name,
         type: type || 'STATIC',
-        definitionJson: definitionJson ? JSON.stringify(definitionJson) : null,
-        members: contactIds ? {
-          create: contactIds.map((contactId: string) => ({ contactId })),
+        definitionJson: tagFilter ? JSON.stringify(tagFilter) : null,
+        members: memberContactIds.length > 0 ? {
+          create: memberContactIds.map((contactId: string) => ({ contactId })),
         } : undefined,
       },
       include: {
@@ -53,6 +119,40 @@ router.post('/:tenantId/segments', async (req, res) => {
     res.status(201).json(segment);
   } catch (error: any) {
     console.error('Error creating segment:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/segments/preview', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { tagFilter } = req.body;
+    
+    if (!tagFilter) {
+      return res.status(400).json({ error: 'tagFilter is required' });
+    }
+    
+    const contactIds = await getContactsByTagFilter(tenantId, tagFilter);
+    
+    const contacts = await prisma.contact.findMany({
+      where: { id: { in: contactIds.slice(0, 100) } },
+      include: {
+        tags: { include: { tag: true } },
+      },
+    });
+    
+    res.json({
+      totalCount: contactIds.length,
+      preview: contacts.map(c => ({
+        id: c.id,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        phone: c.phone,
+        tags: c.tags.map(ct => ct.tag.name),
+      })),
+    });
+  } catch (error: any) {
+    console.error('Error previewing segment:', error);
     res.status(500).json({ error: error.message });
   }
 });

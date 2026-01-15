@@ -19,8 +19,10 @@ import analyticsRoutes from './routes/analytics';
 import authRoutes from './routes/auth';
 import integrationRoutes from './routes/integrations';
 import consentRoutes from './routes/consent';
+import tagRoutes from './routes/tags';
 import { requireAuth } from './middleware/auth';
 import { startCampaignScheduler } from './services/campaignScheduler';
+import { startQueueDispatcher } from './services/queueDispatcher';
 
 dotenv.config();
 
@@ -79,6 +81,7 @@ app.use('/api/tenants', requireAuth, kbArticleRoutes);
 app.use('/api/tenants', requireAuth, analyticsRoutes);
 app.use('/api/tenants', requireAuth, integrationRoutes);
 app.use('/api/tenants', requireAuth, consentRoutes);
+app.use('/api/tenants', requireAuth, tagRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 
@@ -102,6 +105,7 @@ async function main() {
     console.log('Database connected successfully');
     
     startCampaignScheduler();
+    startQueueDispatcher();
     
     app.listen(PORT, () => {
       console.log(`IntelliSend server running on port ${PORT}`);

@@ -133,6 +133,17 @@ export interface TenantSettings {
   defaultFromNumber?: TenantNumber;
   quietHoursStartFormatted: string;
   quietHoursEndFormatted: string;
+  sendRatePerMinute: number;
+  sendJitterMinMs: number;
+  sendJitterMaxMs: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+  contactCount?: number;
+  createdAt: string;
 }
 
 export interface KBArticle {
@@ -285,8 +296,8 @@ export const api = {
       method: 'DELETE',
     }),
   
-  getTags: (tenantId: string) =>
-    request<string[]>(`${API_BASE}/tenants/${tenantId}/tags`),
+  getTagsLegacy: (tenantId: string) =>
+    request<string[]>(`${API_BASE}/tenants/${tenantId}/tags/legacy`),
   
   getSegments: (tenantId: string) =>
     request<Segment[]>(`${API_BASE}/tenants/${tenantId}/segments`),
@@ -456,6 +467,32 @@ export const api = {
       recentConsents: number;
       bySource: Array<{ source: string; count: number }>;
     }>(`${API_BASE}/tenants/${tenantId}/consent/stats`),
+
+  getTags: (tenantId: string) =>
+    request<Tag[]>(`${API_BASE}/tenants/${tenantId}/tags`),
+
+  createTag: (tenantId: string, data: { name: string; color?: string }) =>
+    request<Tag>(`${API_BASE}/tenants/${tenantId}/tags`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteTag: (tenantId: string, tagId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/tags/${tagId}`, {
+      method: 'DELETE',
+    }),
+
+  addTagsToContact: (tenantId: string, contactId: string, tagNames: string[]) =>
+    request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/tags`, {
+      method: 'POST',
+      body: JSON.stringify({ tagNames }),
+    }),
+
+  previewSegment: (tenantId: string, tagFilter: { mode: string; tagIds: string[] }) =>
+    request<{ totalCount: number; preview: Array<{ id: string; firstName: string; lastName: string; phone: string; tags: string[] }> }>(
+      `${API_BASE}/tenants/${tenantId}/segments/preview`,
+      { method: 'POST', body: JSON.stringify({ tagFilter }) }
+    ),
 
   getComplianceAnalytics: (tenantId: string, range: string = '30d') =>
     request<{

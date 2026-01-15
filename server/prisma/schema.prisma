@@ -32,6 +32,7 @@ model Tenant {
   messageEvents     MessageEvent[]
   integration       TenantIntegration?
   memberships       UserTenantMembership[]
+  tags              Tag[]
 }
 
 model TenantSettings {
@@ -41,6 +42,9 @@ model TenantSettings {
   quietHoursStart     Int      @default(1200)
   quietHoursEnd       Int      @default(480)
   defaultFromNumberId String?
+  sendRatePerMinute   Int      @default(30)
+  sendJitterMinMs     Int      @default(1000)
+  sendJitterMaxMs     Int      @default(5000)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -155,14 +159,30 @@ model Contact {
   @@index([tenantId])
 }
 
+model Tag {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts ContactTag[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
 model ContactTag {
   id        String @id @default(uuid())
   contactId String
-  tag       String
+  tagId     String
 
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  @@index([tag])
+  @@unique([contactId, tagId])
+  @@index([tagId])
 }
 
 model Suppression {
@@ -406,4 +426,36 @@ model MessageEvent {
   @@index([tenantId, eventType])
   @@index([tenantId, createdAt])
   @@index([campaignId])
+}
+
+enum OutboundQueueStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  RATE_LIMITED
+  SUPPRESSED
+}
+
+model OutboundMessageQueue {
+  id             String              @id @default(uuid())
+  tenantId       String
+  campaignId     String?
+  campaignStepId String?
+  contactId      String
+  phone          String
+  body           String
+  fromNumber     String
+  status         OutboundQueueStatus @default(PENDING)
+  scheduledAt    DateTime            @default(now())
+  processAfter   DateTime            @default(now())
+  processedAt    DateTime?
+  attempts       Int                 @default(0)
+  errorMessage   String?
+  twilioSid      String?
+  createdAt      DateTime            @default(now())
+
+  @@index([tenantId, status, processAfter])
+  @@index([campaignId])
+  @@index([status, processAfter])
 }

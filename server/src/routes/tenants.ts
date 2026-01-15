@@ -117,7 +117,15 @@ router.get('/:tenantId/settings', async (req, res) => {
 router.post('/:tenantId/settings', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { timezone, quietHoursStart, quietHoursEnd, defaultFromNumberId } = req.body;
+    const { 
+      timezone, 
+      quietHoursStart, 
+      quietHoursEnd, 
+      defaultFromNumberId,
+      sendRatePerMinute,
+      sendJitterMinMs,
+      sendJitterMaxMs,
+    } = req.body;
     
     const updateData: any = {};
     
@@ -149,6 +157,29 @@ router.post('/:tenantId/settings', async (req, res) => {
       updateData.defaultFromNumberId = defaultFromNumberId || null;
     }
     
+    if (sendRatePerMinute !== undefined) {
+      updateData.sendRatePerMinute = Math.max(1, Math.min(120, parseInt(sendRatePerMinute)));
+    }
+    
+    let newMinMs = sendJitterMinMs !== undefined ? Math.max(0, parseInt(sendJitterMinMs)) : undefined;
+    let newMaxMs = sendJitterMaxMs !== undefined ? Math.max(1000, parseInt(sendJitterMaxMs)) : undefined;
+    
+    if (newMinMs !== undefined && newMaxMs !== undefined) {
+      if (newMinMs > newMaxMs) {
+        const temp = newMinMs;
+        newMinMs = newMaxMs;
+        newMaxMs = temp;
+      }
+    }
+    
+    if (newMinMs !== undefined) {
+      updateData.sendJitterMinMs = newMinMs;
+    }
+    
+    if (newMaxMs !== undefined) {
+      updateData.sendJitterMaxMs = newMaxMs;
+    }
+    
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
       create: {
@@ -157,6 +188,9 @@ router.post('/:tenantId/settings', async (req, res) => {
         quietHoursStart: updateData.quietHoursStart ?? 20 * 60,
         quietHoursEnd: updateData.quietHoursEnd ?? 8 * 60,
         defaultFromNumberId: updateData.defaultFromNumberId,
+        sendRatePerMinute: updateData.sendRatePerMinute ?? 30,
+        sendJitterMinMs: updateData.sendJitterMinMs ?? 1000,
+        sendJitterMaxMs: updateData.sendJitterMaxMs ?? 5000,
       },
       update: updateData,
       include: { defaultFromNumber: true },
