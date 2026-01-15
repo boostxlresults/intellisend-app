@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,7 +16,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch('/api/auth/can-register', { credentials: 'include' })
+    fetch(`${API_BASE}/auth/can-register`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => setCanRegister(data.canRegister))
       .catch(() => setCanRegister(false));

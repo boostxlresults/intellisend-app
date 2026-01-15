@@ -29,12 +29,18 @@ const PORT = process.env.PORT || 3001;
 
 const PgSession = connectPgSimple(session);
 
+const corsOrigins = process.env.FRONTEND_URL 
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+  : true;
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || true,
+  origin: corsOrigins,
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+app.set('trust proxy', 1);
 
 app.use(session({
   store: new PgSession({
@@ -49,7 +55,8 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    domain: process.env.COOKIE_DOMAIN || undefined,
   },
 }));
 
