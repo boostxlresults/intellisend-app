@@ -206,3 +206,14 @@ The application runs with two servers:
   - Custom domain support
   - Hide "Powered by IntelliSend" option
   - Branding API endpoints for get/update
+- **ServiceTitan Bookings Integration**:
+  - ServiceTitanConfig model for per-tenant API credentials (API base URL, tenant ID, client ID/secret)
+  - OAuth token caching with automatic refresh
+  - Automatic booking creation on inbound SMS replies via job queue
+  - ServiceTitanBookingJob table with lease-based processing for reliable exactly-once booking creation
+  - Conversation needsAttention flag for prioritizing customer replies
+  - Conversation summary helper builds transcript snippets for booking notes
+  - Settings UI for ServiceTitan configuration with connection testing
+  - Conversations page shows "Needs Attention" badges for customer replies
+  - Robust retry mechanism with exponential backoff for transient failures
+  - Idempotency via unique messageSid constraint prevents duplicate bookings
