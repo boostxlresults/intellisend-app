@@ -21,6 +21,7 @@ router.get('/:tenantId/servicetitan-config', async (req, res) => {
       tenantId: config.tenantId,
       tenantApiBaseUrl: config.tenantApiBaseUrl,
       serviceTitanTenantId: config.serviceTitanTenantId,
+      appKey: config.appKey,
       clientId: config.clientId,
       bookingProvider: config.bookingProvider,
       enabled: config.enabled,
@@ -39,6 +40,7 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
     const {
       tenantApiBaseUrl,
       serviceTitanTenantId,
+      appKey,
       clientId,
       clientSecret,
       bookingProvider,
@@ -50,6 +52,7 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
     });
     
     const newSecret = clientSecret || existing?.clientSecret || '';
+    const newAppKey = appKey || existing?.appKey || '';
     
     if (enabled === true) {
       if (!tenantApiBaseUrl || !serviceTitanTenantId || !clientId) {
@@ -62,11 +65,17 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
           error: 'Client Secret is required when enabling the integration',
         });
       }
+      if (!newAppKey) {
+        return res.status(400).json({
+          error: 'App Key is required when enabling the integration',
+        });
+      }
     }
     
     const updateData = {
       tenantApiBaseUrl: tenantApiBaseUrl || existing?.tenantApiBaseUrl || '',
       serviceTitanTenantId: serviceTitanTenantId || existing?.serviceTitanTenantId || '',
+      appKey: newAppKey,
       clientId: clientId || existing?.clientId || '',
       clientSecret: newSecret,
       bookingProvider: bookingProvider || existing?.bookingProvider || 'IntelliSend-SMS',
@@ -87,6 +96,7 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
       tenantId: config.tenantId,
       tenantApiBaseUrl: config.tenantApiBaseUrl,
       serviceTitanTenantId: config.serviceTitanTenantId,
+      appKey: config.appKey,
       clientId: config.clientId,
       bookingProvider: config.bookingProvider,
       enabled: config.enabled,

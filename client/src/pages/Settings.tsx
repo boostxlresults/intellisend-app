@@ -43,6 +43,7 @@ export default function Settings() {
   const [stForm, setStForm] = useState({
     tenantApiBaseUrl: '',
     serviceTitanTenantId: '',
+    appKey: '',
     clientId: '',
     clientSecret: '',
     bookingProvider: 'IntelliSend-SMS',
@@ -71,6 +72,7 @@ export default function Settings() {
         setStForm({
           tenantApiBaseUrl: stConfigData.tenantApiBaseUrl || '',
           serviceTitanTenantId: stConfigData.serviceTitanTenantId || '',
+          appKey: stConfigData.appKey || '',
           clientId: stConfigData.clientId || '',
           clientSecret: '',
           bookingProvider: stConfigData.bookingProvider || 'IntelliSend-SMS',
@@ -247,6 +249,7 @@ export default function Settings() {
       const savedConfig = await api.saveServiceTitanConfig(selectedTenant.id, {
         tenantApiBaseUrl: stForm.tenantApiBaseUrl,
         serviceTitanTenantId: stForm.serviceTitanTenantId,
+        appKey: stForm.appKey || undefined,
         clientId: stForm.clientId,
         clientSecret: stForm.clientSecret || undefined,
         bookingProvider: stForm.bookingProvider,
@@ -599,6 +602,19 @@ export default function Settings() {
                 />
               </div>
               
+              <div className="form-group">
+                <label>App Key</label>
+                <input
+                  type="text"
+                  value={stForm.appKey}
+                  onChange={(e) => setStForm(prev => ({ ...prev, appKey: e.target.value }))}
+                  placeholder="ak1.xxxxxxxx"
+                />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  From Developer Portal → My Apps → Your App → "Application Key" (starts with <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: '3px' }}>ak1.</code>)
+                </p>
+              </div>
+              
               <div style={{ display: 'flex', gap: '16px' }}>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label>Client ID</label>
@@ -606,8 +622,11 @@ export default function Settings() {
                     type="text"
                     value={stForm.clientId}
                     onChange={(e) => setStForm(prev => ({ ...prev, clientId: e.target.value }))}
-                    placeholder="Client ID from ST Developer Portal"
+                    placeholder="From ServiceTitan Settings"
                   />
+                  <p style={{ fontSize: '10px', color: '#a0aec0', marginTop: '2px' }}>
+                    From ST Settings → Integrations → API App Access
+                  </p>
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label>Client Secret</label>

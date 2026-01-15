@@ -714,8 +714,9 @@ model ServiceTitanConfig {
   tenantId             String   @unique
   tenantApiBaseUrl     String
   serviceTitanTenantId String
-  clientId             String
-  clientSecret         String
+  appKey               String   // App Key from Developer Portal (ST-App-Key header)
+  clientId             String   // Client ID from ServiceTitan tenant
+  clientSecret         String   // Client Secret from ServiceTitan tenant
   bookingProvider      String   @default("IntelliSend-SMS")
   enabled              Boolean  @default(false)
   createdAt            DateTime @default(now())

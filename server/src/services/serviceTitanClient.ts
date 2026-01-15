@@ -189,7 +189,7 @@ export async function createBookingFromInboundSms(
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        'ST-App-Key': config.clientId,
+        'ST-App-Key': config.appKey,
       },
       body: JSON.stringify(bookingPayload),
     });
@@ -295,14 +295,14 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'ST-App-Key': config.clientId,
+        'ST-App-Key': config.appKey,
       },
     });
 
     if (!settingsResponse.ok) {
       return { 
         ok: false, 
-        error: `API access failed: ${settingsResponse.status} ${settingsResponse.statusText} - check Tenant ID`, 
+        error: `API access failed: ${settingsResponse.status} ${settingsResponse.statusText} - check Tenant ID or App Key`, 
         details 
       };
     }
@@ -313,7 +313,7 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'ST-App-Key': config.clientId,
+        'ST-App-Key': config.appKey,
       },
     });
 

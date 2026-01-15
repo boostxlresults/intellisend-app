@@ -65,6 +65,7 @@ export interface ServiceTitanConfig {
   tenantId: string;
   tenantApiBaseUrl: string;
   serviceTitanTenantId: string;
+  appKey: string;
   clientId: string;
   bookingProvider: string;
   enabled: boolean;
@@ -621,6 +622,7 @@ export const api = {
   saveServiceTitanConfig: (tenantId: string, data: {
     tenantApiBaseUrl: string;
     serviceTitanTenantId: string;
+    appKey?: string;
     clientId: string;
     clientSecret?: string;
     bookingProvider: string;
