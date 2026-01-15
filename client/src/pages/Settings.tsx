@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { api, TenantNumber, Suppression, AiPersona, TenantSettings } from '../api/client';
 
+interface TwilioIntegration {
+  twilioConfigured: boolean;
+  twilioAccountSid: string | null;
+  twilioMessagingServiceSid: string | null;
+  twilioValidatedAt: string | null;
+}
+
 const TIMEZONES = [
   'America/Phoenix',
   'America/Los_Angeles',
@@ -18,27 +25,33 @@ export default function Settings() {
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
   const [personas, setPersonas] = useState<AiPersona[]>([]);
   const [tenantSettings, setTenantSettings] = useState<TenantSettings | null>(null);
+  const [twilioIntegration, setTwilioIntegration] = useState<TwilioIntegration | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddNumber, setShowAddNumber] = useState(false);
   const [showAddSuppression, setShowAddSuppression] = useState(false);
   const [showAddPersona, setShowAddPersona] = useState(false);
   const [showAddTenant, setShowAddTenant] = useState(false);
+  const [showTwilioSetup, setShowTwilioSetup] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingTwilio, setSavingTwilio] = useState(false);
+  const [testingTwilio, setTestingTwilio] = useState(false);
 
   const fetchData = async () => {
     if (!selectedTenant) return;
     setLoading(true);
     try {
-      const [nums, supps, pers, settings] = await Promise.all([
+      const [nums, supps, pers, settings, integrations] = await Promise.all([
         api.getTenantNumbers(selectedTenant.id),
         api.getSuppressions(selectedTenant.id),
         api.getAiPersonas(selectedTenant.id),
         api.getTenantSettings(selectedTenant.id),
+        api.getIntegrations(selectedTenant.id),
       ]);
       setNumbers(nums);
       setSuppressions(supps);
       setPersonas(pers);
       setTenantSettings(settings);
+      setTwilioIntegration(integrations);
     } catch (error) {
       console.error('Failed to fetch settings:', error);
     } finally {
@@ -142,6 +155,59 @@ export default function Settings() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Failed to create tenant: ' + message);
+    }
+  };
+
+  const handleSaveTwilio = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedTenant) return;
+    setSavingTwilio(true);
+    const formData = new FormData(e.currentTarget);
+    try {
+      await api.saveTwilioIntegration(selectedTenant.id, {
+        accountSid: formData.get('accountSid') as string,
+        authToken: formData.get('authToken') as string,
+        messagingServiceSid: formData.get('messagingServiceSid') as string || undefined,
+      });
+      setShowTwilioSetup(false);
+      fetchData();
+      alert('Twilio integration saved successfully!');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to save Twilio integration: ' + message);
+    } finally {
+      setSavingTwilio(false);
+    }
+  };
+
+  const handleTestTwilio = async () => {
+    if (!selectedTenant) return;
+    setTestingTwilio(true);
+    try {
+      const result = await api.testTwilioIntegration(selectedTenant.id);
+      if (result.success) {
+        alert(`Twilio connection successful!\nAccount: ${result.accountName}\nStatus: ${result.status}`);
+      } else {
+        alert('Twilio test failed: ' + result.error);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to test Twilio: ' + message);
+    } finally {
+      setTestingTwilio(false);
+    }
+  };
+
+  const handleRemoveTwilio = async () => {
+    if (!selectedTenant) return;
+    if (!confirm('Are you sure you want to remove the Twilio integration?')) return;
+    try {
+      await api.removeTwilioIntegration(selectedTenant.id);
+      fetchData();
+      alert('Twilio integration removed.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to remove Twilio: ' + message);
     }
   };
 
@@ -309,6 +375,61 @@ export default function Settings() {
               </table>
             )}
           </div>
+
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3>Twilio Integration</h3>
+              {!twilioIntegration?.twilioConfigured && (
+                <button className="btn btn-primary btn-small" onClick={() => setShowTwilioSetup(true)}>
+                  Configure Twilio
+                </button>
+              )}
+            </div>
+            {twilioIntegration?.twilioConfigured ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <span style={{ color: '#38a169', fontSize: '20px' }}>&#10003;</span>
+                  <span style={{ fontWeight: 500 }}>Twilio Connected</span>
+                </div>
+                <table className="table" style={{ marginBottom: '16px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ fontWeight: 500 }}>Account SID</td>
+                      <td>{twilioIntegration.twilioAccountSid}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 500 }}>Messaging Service SID</td>
+                      <td>{twilioIntegration.twilioMessagingServiceSid || 'Not configured'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 500 }}>Last Validated</td>
+                      <td>{twilioIntegration.twilioValidatedAt ? new Date(twilioIntegration.twilioValidatedAt).toLocaleString() : 'Never'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button className="btn btn-secondary btn-small" onClick={handleTestTwilio} disabled={testingTwilio}>
+                    {testingTwilio ? 'Testing...' : 'Test Connection'}
+                  </button>
+                  <button className="btn btn-secondary btn-small" onClick={() => setShowTwilioSetup(true)}>
+                    Update
+                  </button>
+                  <button className="btn btn-secondary btn-small" onClick={handleRemoveTwilio} style={{ color: '#e53e3e' }}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ color: '#718096', marginBottom: '12px' }}>
+                  Connect your Twilio account to send and receive SMS messages. You'll need your Account SID, Auth Token, and optionally a Messaging Service SID.
+                </p>
+                <p style={{ fontSize: '12px', color: '#a0aec0' }}>
+                  Get your credentials from <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer" style={{ color: '#3182ce' }}>console.twilio.com</a>
+                </p>
+              </div>
+            )}
+          </div>
         </>
       )}
       
@@ -410,6 +531,54 @@ export default function Settings() {
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddTenant(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showTwilioSetup && (
+        <div className="modal-overlay" onClick={() => setShowTwilioSetup(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>{twilioIntegration?.twilioConfigured ? 'Update Twilio Integration' : 'Configure Twilio Integration'}</h3>
+            <form onSubmit={handleSaveTwilio}>
+              <div className="form-group">
+                <label>Account SID *</label>
+                <input type="text" name="accountSid" required placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  Found in your Twilio Console dashboard
+                </p>
+              </div>
+              <div className="form-group">
+                <label>Auth Token *</label>
+                <input type="password" name="authToken" required placeholder="Your Twilio Auth Token" />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  Found in your Twilio Console dashboard (click to reveal)
+                </p>
+              </div>
+              <div className="form-group">
+                <label>Messaging Service SID (Optional)</label>
+                <input type="text" name="messagingServiceSid" placeholder="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  If you use a Messaging Service for sending SMS
+                </p>
+              </div>
+              <div style={{ background: '#f7fafc', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+                <p style={{ fontSize: '12px', color: '#4a5568', marginBottom: '8px' }}>
+                  <strong>Webhook URL for Twilio:</strong>
+                </p>
+                <code style={{ fontSize: '11px', background: '#edf2f7', padding: '4px 8px', borderRadius: '4px', display: 'block', wordBreak: 'break-all' }}>
+                  https://api.intellisend.net/webhooks/twilio/inbound
+                </code>
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '8px' }}>
+                  Configure this URL in your Twilio Messaging Service settings for incoming messages.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowTwilioSetup(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingTwilio}>
+                  {savingTwilio ? 'Validating...' : 'Save & Validate'}
+                </button>
               </div>
             </form>
           </div>

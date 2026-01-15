@@ -47,14 +47,16 @@ IntelliSend is a production-ready outbound SMS platform for home-services brands
 7. **Tenant Settings**: Per-tenant timezone, quiet hours (no SMS during configured hours), and default from number
 8. **Analytics Dashboard**: Message volume tracking, delivery rates, opt-out trends, blocked sends, campaign performance with charts
 9. **User Authentication**: Secure login with bcrypt password hashing, session-based auth, protected API routes
+10. **Per-Tenant Twilio Integration**: Each tenant can configure their own Twilio credentials (Account SID, Auth Token, Messaging Service SID) with validation and testing
+11. **Multi-Tenant User Access**: UserTenantMembership model with roles (OWNER, ADMIN, MEMBER) for team collaboration
 
 ## Environment Variables
 
 Required for full functionality:
 - `DATABASE_URL` - PostgreSQL connection string (auto-configured)
-- `TWILIO_ACCOUNT_SID` - Twilio account SID
-- `TWILIO_AUTH_TOKEN` - Twilio auth token
-- `TWILIO_MESSAGING_SERVICE_SID` - Twilio messaging service SID
+- `TWILIO_ACCOUNT_SID` - Global Twilio account SID (fallback if tenant has no credentials)
+- `TWILIO_AUTH_TOKEN` - Global Twilio auth token (fallback)
+- `TWILIO_MESSAGING_SERVICE_SID` - Global Twilio messaging service SID (fallback)
 - `SESSION_SECRET` - Secret for session encryption (auto-generated if not set)
 - `FRONTEND_URL` - Frontend URL for CORS (optional, auto-detected)
 
@@ -83,6 +85,12 @@ Required for full functionality:
 - `GET /api/tenants/:tenantId/conversations` - List conversations
 - `GET /api/tenants/:tenantId/conversations/:conversationId` - Get conversation with messages
 - `POST /api/tenants/:tenantId/conversations/:conversationId/messages` - Send message
+
+### Integrations
+- `GET /api/tenants/:tenantId/integrations` - Get integration status (Twilio configured, etc.)
+- `POST /api/tenants/:tenantId/integrations/twilio` - Save/update Twilio credentials
+- `DELETE /api/tenants/:tenantId/integrations/twilio` - Remove Twilio integration
+- `POST /api/tenants/:tenantId/integrations/twilio/test` - Test Twilio connection
 
 ### Twilio Webhooks
 - `POST /webhooks/twilio/inbound` - Receive inbound SMS

@@ -386,4 +386,28 @@ export const api = {
   
   getAnalyticsOptOuts: (tenantId: string, range: string = '30d') =>
     request<OptOutAnalytics>(`${API_BASE}/tenants/${tenantId}/analytics/opt-outs?range=${range}`),
+
+  getIntegrations: (tenantId: string) =>
+    request<{
+      twilioConfigured: boolean;
+      twilioAccountSid: string | null;
+      twilioMessagingServiceSid: string | null;
+      twilioValidatedAt: string | null;
+    }>(`${API_BASE}/tenants/${tenantId}/integrations`),
+
+  saveTwilioIntegration: (tenantId: string, data: { accountSid: string; authToken: string; messagingServiceSid?: string }) =>
+    request<{ success: boolean; twilioConfigured: boolean; twilioValidatedAt: string }>(`${API_BASE}/tenants/${tenantId}/integrations/twilio`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  removeTwilioIntegration: (tenantId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/integrations/twilio`, {
+      method: 'DELETE',
+    }),
+
+  testTwilioIntegration: (tenantId: string) =>
+    request<{ success: boolean; accountName?: string; status?: string; error?: string }>(`${API_BASE}/tenants/${tenantId}/integrations/twilio/test`, {
+      method: 'POST',
+    }),
 };

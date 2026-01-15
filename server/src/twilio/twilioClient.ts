@@ -1,20 +1,74 @@
 import Twilio from 'twilio';
 import { prisma } from '../index';
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+const globalAccountSid = process.env.TWILIO_ACCOUNT_SID;
+const globalAuthToken = process.env.TWILIO_AUTH_TOKEN;
+const globalMessagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
-let twilioClient: Twilio.Twilio | null = null;
+const clientCache = new Map<string, Twilio.Twilio>();
 
-function getClient(): Twilio.Twilio {
-  if (!twilioClient) {
-    if (!accountSid || !authToken) {
-      throw new Error('Twilio credentials not configured');
-    }
-    twilioClient = Twilio(accountSid, authToken);
+interface TenantTwilioConfig {
+  accountSid: string;
+  authToken: string;
+  messagingServiceSid?: string;
+  isConfigured: boolean;
+}
+
+export async function getTenantTwilioConfig(tenantId: string): Promise<TenantTwilioConfig | null> {
+  const integration = await prisma.tenantIntegration.findUnique({
+    where: { tenantId },
+  });
+
+  if (integration?.twilioConfigured && integration.twilioAccountSid && integration.twilioAuthToken) {
+    return {
+      accountSid: integration.twilioAccountSid,
+      authToken: integration.twilioAuthToken,
+      messagingServiceSid: integration.twilioMessagingServiceSid || undefined,
+      isConfigured: true,
+    };
   }
-  return twilioClient;
+
+  if (globalAccountSid && globalAuthToken) {
+    return {
+      accountSid: globalAccountSid,
+      authToken: globalAuthToken,
+      messagingServiceSid: globalMessagingServiceSid || undefined,
+      isConfigured: false,
+    };
+  }
+
+  return null;
+}
+
+export async function getClientForTenant(tenantId: string): Promise<{ client: Twilio.Twilio; config: TenantTwilioConfig } | null> {
+  const config = await getTenantTwilioConfig(tenantId);
+  
+  if (!config) {
+    return null;
+  }
+
+  const cacheKey = config.accountSid;
+  
+  if (!clientCache.has(cacheKey)) {
+    clientCache.set(cacheKey, Twilio(config.accountSid, config.authToken));
+  }
+
+  return {
+    client: clientCache.get(cacheKey)!,
+    config,
+  };
+}
+
+function getGlobalClient(): Twilio.Twilio | null {
+  if (!globalAccountSid || !globalAuthToken) {
+    return null;
+  }
+  
+  if (!clientCache.has('global')) {
+    clientCache.set('global', Twilio(globalAccountSid, globalAuthToken));
+  }
+  
+  return clientCache.get('global')!;
 }
 
 export interface SendSmsOptions {
@@ -102,7 +156,16 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
       };
     }
 
-    const client = getClient();
+    const twilioResult = await getClientForTenant(options.tenantId);
+    
+    if (!twilioResult) {
+      return {
+        success: false,
+        error: 'Twilio not configured for this tenant',
+      };
+    }
+    
+    const { client, config } = twilioResult;
     
     const messageBody = options.skipOptOutFooter 
       ? options.body 
@@ -114,8 +177,8 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
       from: options.fromNumber,
     };
 
-    if (messagingServiceSid) {
-      messageOptions.messagingServiceSid = messagingServiceSid;
+    if (config.messagingServiceSid) {
+      messageOptions.messagingServiceSid = config.messagingServiceSid;
     }
 
     if (options.statusCallbackUrl) {
@@ -165,10 +228,15 @@ export async function checkSuppression(tenantId: string, phone: string): Promise
   return !!suppression;
 }
 
-export function isTwilioConfigured(): boolean {
-  return !!(accountSid && authToken);
+export function isGlobalTwilioConfigured(): boolean {
+  return !!(globalAccountSid && globalAuthToken);
 }
 
-export function getAuthToken(): string | undefined {
-  return authToken;
+export function getGlobalAuthToken(): string | undefined {
+  return globalAuthToken;
+}
+
+export async function getTenantAuthToken(tenantId: string): Promise<string | undefined> {
+  const config = await getTenantTwilioConfig(tenantId);
+  return config?.authToken;
 }

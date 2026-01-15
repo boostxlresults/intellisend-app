@@ -1,14 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import Twilio from 'twilio';
+import { prisma } from '../index';
+import { getGlobalAuthToken } from '../twilio/twilioClient';
 
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-
-export function validateTwilioSignature(req: Request, res: Response, next: NextFunction) {
-  if (!authToken) {
-    console.warn('TWILIO_AUTH_TOKEN not configured - skipping signature validation (dev mode)');
-    return next();
-  }
-
+export async function validateTwilioSignature(req: Request, res: Response, next: NextFunction) {
   const twilioSignature = req.headers['x-twilio-signature'] as string;
   
   if (!twilioSignature) {
@@ -19,6 +14,29 @@ export function validateTwilioSignature(req: Request, res: Response, next: NextF
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['host'];
   const url = `${protocol}://${host}${req.originalUrl}`;
+
+  const toNumber = req.body?.To;
+  let authToken: string | undefined;
+
+  if (toNumber) {
+    const tenantNumber = await prisma.tenantNumber.findFirst({
+      where: { phoneNumber: toNumber },
+      include: { tenant: { include: { integration: true } } },
+    });
+
+    if (tenantNumber?.tenant?.integration?.twilioAuthToken) {
+      authToken = tenantNumber.tenant.integration.twilioAuthToken;
+    }
+  }
+
+  if (!authToken) {
+    authToken = getGlobalAuthToken();
+  }
+
+  if (!authToken) {
+    console.warn('No Twilio auth token available - skipping signature validation (dev mode)');
+    return next();
+  }
 
   const isValid = Twilio.validateRequest(
     authToken,

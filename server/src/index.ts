@@ -17,6 +17,7 @@ import twilioWebhooks from './routes/twilioWebhooks';
 import healthRoutes from './routes/health';
 import analyticsRoutes from './routes/analytics';
 import authRoutes from './routes/auth';
+import integrationRoutes from './routes/integrations';
 import { requireAuth } from './middleware/auth';
 import { startCampaignScheduler } from './services/campaignScheduler';
 
@@ -75,6 +76,7 @@ app.use('/api/tenants', requireAuth, suppressionRoutes);
 app.use('/api/tenants', requireAuth, aiPersonaRoutes);
 app.use('/api/tenants', requireAuth, kbArticleRoutes);
 app.use('/api/tenants', requireAuth, analyticsRoutes);
+app.use('/api/tenants', requireAuth, integrationRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 
