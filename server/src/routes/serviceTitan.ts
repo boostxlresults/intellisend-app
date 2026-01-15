@@ -1,0 +1,116 @@
+import { Router } from 'express';
+import { prisma } from '../index';
+import { testServiceTitanConnection } from '../services/serviceTitanClient';
+
+const router = Router();
+
+router.get('/:tenantId/servicetitan-config', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const config = await prisma.serviceTitanConfig.findUnique({
+      where: { tenantId },
+    });
+    
+    if (!config) {
+      return res.json(null);
+    }
+    
+    res.json({
+      id: config.id,
+      tenantId: config.tenantId,
+      tenantApiBaseUrl: config.tenantApiBaseUrl,
+      serviceTitanTenantId: config.serviceTitanTenantId,
+      clientId: config.clientId,
+      bookingProvider: config.bookingProvider,
+      enabled: config.enabled,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
+    });
+  } catch (error: any) {
+    console.error('Error fetching ServiceTitan config:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/servicetitan-config', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const {
+      tenantApiBaseUrl,
+      serviceTitanTenantId,
+      clientId,
+      clientSecret,
+      bookingProvider,
+      enabled,
+    } = req.body;
+    
+    if (enabled === true) {
+      if (!tenantApiBaseUrl || !serviceTitanTenantId || !clientId) {
+        return res.status(400).json({
+          error: 'API Base URL, ServiceTitan Tenant ID, and Client ID are required when enabling the integration',
+        });
+      }
+    }
+    
+    const existing = await prisma.serviceTitanConfig.findUnique({
+      where: { tenantId },
+    });
+    
+    const updateData: any = {
+      tenantApiBaseUrl: tenantApiBaseUrl || existing?.tenantApiBaseUrl || '',
+      serviceTitanTenantId: serviceTitanTenantId || existing?.serviceTitanTenantId || '',
+      clientId: clientId || existing?.clientId || '',
+      bookingProvider: bookingProvider || existing?.bookingProvider || 'IntelliSend-SMS',
+      enabled: enabled ?? existing?.enabled ?? false,
+    };
+    
+    if (clientSecret) {
+      updateData.clientSecret = clientSecret;
+    } else if (!existing) {
+      return res.status(400).json({
+        error: 'Client Secret is required for initial setup',
+      });
+    }
+    
+    const config = await prisma.serviceTitanConfig.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        ...updateData,
+        clientSecret: clientSecret || '',
+      },
+      update: updateData,
+    });
+    
+    res.json({
+      id: config.id,
+      tenantId: config.tenantId,
+      tenantApiBaseUrl: config.tenantApiBaseUrl,
+      serviceTitanTenantId: config.serviceTitanTenantId,
+      clientId: config.clientId,
+      bookingProvider: config.bookingProvider,
+      enabled: config.enabled,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
+    });
+  } catch (error: any) {
+    console.error('Error saving ServiceTitan config:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/servicetitan-test', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const result = await testServiceTitanConnection(tenantId);
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error testing ServiceTitan connection:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+export default router;

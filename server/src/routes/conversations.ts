@@ -36,7 +36,11 @@ router.get('/:tenantId/conversations', async (req, res) => {
           take: 1,
         },
       },
-      orderBy: { lastMessageAt: 'desc' },
+      orderBy: [
+        { needsAttention: 'desc' },
+        { lastMessageAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
     });
     
     res.json(conversations);
@@ -197,7 +201,10 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
     
     await prisma.conversation.update({
       where: { id: conversationId },
-      data: { lastMessageAt: new Date() },
+      data: { 
+        lastMessageAt: new Date(),
+        needsAttention: false,
+      },
     });
     
     await prisma.contact.update({

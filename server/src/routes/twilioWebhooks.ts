@@ -3,6 +3,8 @@ import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
 import { isStopKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
+import { buildConversationSummary } from '../services/conversationSummary';
+import { createBookingFromInboundSms } from '../services/serviceTitanClient';
 
 const router = Router();
 
@@ -119,6 +121,44 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       where: { id: contact.id },
       data: { lastRepliedAt: new Date() },
     });
+    
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { needsAttention: true },
+    });
+    
+    if (!conversation.serviceTitanBookingId) {
+      try {
+        const summary = await buildConversationSummary(conversation.id, 5, 800);
+        const bookingId = await createBookingFromInboundSms({
+          tenantId,
+          contact: {
+            id: contact.id,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            phone: contact.phone,
+            email: contact.email,
+          },
+          conversationId: conversation.id,
+          toNumber: To,
+          lastInboundMessage: Body || '',
+          conversationSummary: summary,
+        });
+        
+        if (bookingId) {
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+              serviceTitanBookingId: bookingId,
+              serviceTitanBookingCreatedAt: new Date(),
+            },
+          });
+          console.log(`ServiceTitan booking created: ${bookingId} for conversation ${conversation.id}`);
+        }
+      } catch (stError) {
+        console.error(`ServiceTitan booking failed for conversation ${conversation.id}:`, stError);
+      }
+    }
     
     console.log(`Inbound message saved for conversation ${conversation.id}`);
     
