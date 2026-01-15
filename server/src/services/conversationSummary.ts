@@ -1,9 +1,19 @@
 import { prisma } from '../index';
 
+function formatTimestamp(date: Date): string {
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 export async function buildConversationSummary(
   conversationId: string,
   maxMessages: number = 5,
-  maxChars: number = 800
+  maxChars: number = 1200
 ): Promise<string> {
   const messages = await prisma.message.findMany({
     where: { conversationId },
@@ -22,13 +32,14 @@ export async function buildConversationSummary(
 
   const reversedMessages = messages.reverse();
   
-  let summary = 'Recent SMS conversation:\n';
+  let summary = `--- Conversation History (Last ${reversedMessages.length} messages) ---\n`;
   
   for (const msg of reversedMessages) {
+    const timestamp = formatTimestamp(msg.createdAt);
     const speaker = msg.direction === 'INBOUND' 
-      ? `Customer (${msg.contact.firstName || 'Unknown'})` 
-      : 'Agent';
-    const line = `${speaker}: ${msg.body}\n`;
+      ? `CUSTOMER` 
+      : 'AGENT';
+    const line = `[${timestamp}] ${speaker}: ${msg.body}\n`;
     
     if (summary.length + line.length <= maxChars) {
       summary += line;

@@ -20,6 +20,15 @@ export interface CreateBookingFromInboundSmsOptions {
   toNumber: string;
   lastInboundMessage: string;
   conversationSummary: string;
+  campaignName?: string;
+  frontendUrl?: string;
+}
+
+export interface BookingResult {
+  success: boolean;
+  bookingId?: string;
+  error?: string;
+  errorCode?: 'AUTH_FAILED' | 'INVALID_TENANT' | 'MISSING_SCOPE' | 'RATE_LIMITED' | 'API_ERROR' | 'NETWORK_ERROR';
 }
 
 async function getServiceTitanConfig(tenantId: string) {
@@ -79,12 +88,12 @@ async function getAccessToken(config: {
 
 export async function createBookingFromInboundSms(
   options: CreateBookingFromInboundSmsOptions
-): Promise<string | null> {
+): Promise<BookingResult> {
   try {
     const config = await getServiceTitanConfig(options.tenantId);
     
     if (!config || !config.enabled) {
-      return null;
+      return { success: false, error: 'ServiceTitan integration not configured or disabled', errorCode: 'API_ERROR' };
     }
 
     const accessToken = await getAccessToken({
@@ -95,20 +104,58 @@ export async function createBookingFromInboundSms(
     });
 
     if (!accessToken) {
-      console.error(`[ServiceTitan] Failed to get access token for tenant ${options.tenantId}`);
-      return null;
+      console.error(`[ServiceTitan] Failed to get access token for tenant ${options.tenantId} - check Client ID/Secret`);
+      return { 
+        success: false, 
+        error: 'Authentication failed - check Client ID and Client Secret', 
+        errorCode: 'AUTH_FAILED' 
+      };
     }
 
+    const conversationUrl = options.frontendUrl 
+      ? `${options.frontendUrl}/conversations/${options.conversationId}`
+      : `IntelliSend Conversation ID: ${options.conversationId}`;
+
+    const createdAt = new Date().toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
     const bookingNotes = [
-      `IntelliSend SMS Notification`,
-      `Tenant: ${config.tenant.publicName}`,
-      `Twilio Number: ${options.toNumber}`,
-      `Conversation ID: ${options.conversationId}`,
+      `════════════════════════════════════════`,
+      `🚨 CSR ACTION REQUIRED`,
+      `════════════════════════════════════════`,
       ``,
-      `Last Message: ${options.lastInboundMessage}`,
+      `A customer has replied to an SMS campaign and needs attention.`,
+      ``,
+      `📋 BOOKING DETAILS`,
+      `────────────────────────────────────────`,
+      `Customer: ${options.contact.firstName} ${options.contact.lastName}`.trim(),
+      `Phone: ${options.contact.phone}`,
+      options.contact.email ? `Email: ${options.contact.email}` : null,
+      ``,
+      options.campaignName ? `📣 Campaign: ${options.campaignName}` : null,
+      `📱 Twilio Number: ${options.toNumber}`,
+      `🕐 Created: ${createdAt}`,
+      ``,
+      `💬 LAST MESSAGE FROM CUSTOMER`,
+      `────────────────────────────────────────`,
+      `"${options.lastInboundMessage}"`,
       ``,
       options.conversationSummary,
-    ].join('\n');
+      ``,
+      `🔗 VIEW FULL CONVERSATION`,
+      `────────────────────────────────────────`,
+      conversationUrl,
+      ``,
+      `────────────────────────────────────────`,
+      `Source: ${config.bookingProvider} | Tenant: ${config.tenant.publicName}`,
+    ].filter(line => line !== null).join('\n');
 
     const bookingPayload = {
       source: config.bookingProvider,
@@ -142,17 +189,62 @@ export async function createBookingFromInboundSms(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[ServiceTitan] Booking creation failed for tenant ${options.tenantId}: ${response.status} - ${errorText}`);
-      return null;
+      
+      if (response.status === 401) {
+        tokenCache.delete(`${config.serviceTitanTenantId}:${config.clientId}`);
+        return { 
+          success: false, 
+          error: 'Authentication expired or invalid - credentials may have changed', 
+          errorCode: 'AUTH_FAILED' 
+        };
+      }
+      if (response.status === 403) {
+        return { 
+          success: false, 
+          error: 'Access denied - ensure "bookings:write" scope is enabled in ServiceTitan Developer Portal', 
+          errorCode: 'MISSING_SCOPE' 
+        };
+      }
+      if (response.status === 404) {
+        return { 
+          success: false, 
+          error: `Invalid ServiceTitan Tenant ID (${config.serviceTitanTenantId}) or API Base URL mismatch`, 
+          errorCode: 'INVALID_TENANT' 
+        };
+      }
+      if (response.status === 429) {
+        return { 
+          success: false, 
+          error: 'Rate limited by ServiceTitan API - too many requests', 
+          errorCode: 'RATE_LIMITED' 
+        };
+      }
+      
+      return { 
+        success: false, 
+        error: `API error ${response.status}: ${errorText.substring(0, 200)}`, 
+        errorCode: 'API_ERROR' 
+      };
     }
 
     const result = await response.json() as { id?: string; bookingId?: string };
-    const bookingId = result.id || result.bookingId || null;
+    const bookingId = result.id || result.bookingId || undefined;
     
     console.log(`[ServiceTitan] Booking created for tenant ${options.tenantId}: ${bookingId}`);
-    return bookingId;
+    return { success: true, bookingId };
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[ServiceTitan] Error creating booking for tenant ${options.tenantId}:`, error);
-    return null;
+    
+    if (message.includes('ENOTFOUND') || message.includes('ECONNREFUSED')) {
+      return { 
+        success: false, 
+        error: 'Cannot reach ServiceTitan API - check API Base URL or network connectivity', 
+        errorCode: 'NETWORK_ERROR' 
+      };
+    }
+    
+    return { success: false, error: message, errorCode: 'NETWORK_ERROR' };
   }
 }
 

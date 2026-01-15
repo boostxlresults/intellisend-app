@@ -101,9 +101,22 @@ async function processNextJob(): Promise<void> {
       return;
     }
     
-    const summary = await buildConversationSummary(jobRecord.conversationId, 5, 800);
+    const summary = await buildConversationSummary(jobRecord.conversationId, 5, 1000);
     
-    const bookingId = await createBookingFromInboundSms({
+    const campaignMessage = await prisma.message.findFirst({
+      where: { 
+        conversationId: jobRecord.conversationId,
+        campaignId: { not: null },
+      },
+      include: { campaign: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    const frontendUrl = process.env.FRONTEND_URL || process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+      : null;
+    
+    const result = await createBookingFromInboundSms({
       tenantId: jobRecord.tenantId,
       contact: {
         id: contact.id,
@@ -116,38 +129,55 @@ async function processNextJob(): Promise<void> {
       toNumber: jobRecord.toNumber,
       lastInboundMessage: jobRecord.messageBody,
       conversationSummary: summary,
+      campaignName: campaignMessage?.campaign?.name || undefined,
+      frontendUrl: frontendUrl || undefined,
     });
     
-    if (bookingId) {
+    if (result.success && result.bookingId) {
       await prisma.$transaction([
         prisma.serviceTitanBookingJob.update({
           where: { id: jobRecord.id },
           data: {
             status: 'SUCCESS',
-            bookingId,
+            bookingId: result.bookingId,
             leaseExpiresAt: null,
           },
         }),
         prisma.conversation.update({
           where: { id: jobRecord.conversationId },
           data: {
-            serviceTitanBookingId: bookingId,
+            serviceTitanBookingId: result.bookingId,
             serviceTitanBookingCreatedAt: new Date(),
           },
         }),
       ]);
-      console.log(`ServiceTitan booking created: ${bookingId} for job ${jobRecord.id}`);
+      console.log(`ServiceTitan booking created: ${result.bookingId} for job ${jobRecord.id}`);
     } else {
-      await prisma.serviceTitanBookingJob.update({
-        where: { id: jobRecord.id },
-        data: {
-          status: 'PENDING',
-          leaseExpiresAt: null,
-          nextRunAt: new Date(Date.now() + BACKOFF_BASE_MS * jobRecord.attempts),
-          errorMessage: 'Integration not enabled or returned null',
-        },
-      });
-      console.log(`ServiceTitan booking job ${jobRecord.id} - integration not ready, rescheduled`);
+      const shouldRetry = result.errorCode !== 'MISSING_SCOPE' && result.errorCode !== 'INVALID_TENANT';
+      
+      if (shouldRetry && jobRecord.attempts < jobRecord.maxAttempts) {
+        const nextRun = new Date(Date.now() + BACKOFF_BASE_MS * jobRecord.attempts);
+        await prisma.serviceTitanBookingJob.update({
+          where: { id: jobRecord.id },
+          data: {
+            status: 'PENDING',
+            leaseExpiresAt: null,
+            nextRunAt: nextRun,
+            errorMessage: `[${result.errorCode}] ${result.error}`,
+          },
+        });
+        console.log(`ServiceTitan booking job ${jobRecord.id} - ${result.errorCode}: ${result.error}, rescheduled`);
+      } else {
+        await prisma.serviceTitanBookingJob.update({
+          where: { id: jobRecord.id },
+          data: {
+            status: 'FAILED',
+            leaseExpiresAt: null,
+            errorMessage: `[${result.errorCode}] ${result.error}`,
+          },
+        });
+        console.log(`ServiceTitan booking job ${jobRecord.id} - FAILED: ${result.errorCode}: ${result.error}`);
+      }
     }
   } catch (error: any) {
     console.error(`ServiceTitan booking job ${jobRecord.id} failed:`, error);
