@@ -566,8 +566,10 @@ export default function Settings() {
                   onChange={(e) => setStForm(prev => ({ ...prev, tenantApiBaseUrl: e.target.value }))}
                   placeholder="https://api.servicetitan.io"
                 />
-                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
-                  ServiceTitan API base URL (usually https://api.servicetitan.io or https://api-integration.servicetitan.io)
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px', lineHeight: '1.5' }}>
+                  <strong>Production accounts:</strong> Use <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: '3px' }}>https://api.servicetitan.io</code><br />
+                  <strong>Integration/Sandbox accounts:</strong> Use <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: '3px' }}>https://api-integration.servicetitan.io</code><br />
+                  <span style={{ color: '#a0aec0', fontSize: '10px' }}>Check your ServiceTitan Developer Portal to confirm which environment your credentials are for.</span>
                 </p>
               </div>
               
