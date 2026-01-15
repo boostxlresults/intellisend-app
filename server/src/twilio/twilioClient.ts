@@ -77,6 +77,7 @@ export interface SendSmsOptions {
   fromNumber: string;
   toNumber: string;
   body: string;
+  mediaUrl?: string;
   statusCallbackUrl?: string;
   skipOptOutFooter?: boolean;
   skipRateLimitCheck?: boolean;
@@ -196,6 +197,10 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
       body: messageBody,
       from: options.fromNumber,
     };
+
+    if (options.mediaUrl) {
+      messageOptions.mediaUrl = [options.mediaUrl];
+    }
 
     if (config.messagingServiceSid) {
       messageOptions.messagingServiceSid = config.messagingServiceSid;

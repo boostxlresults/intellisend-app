@@ -33,6 +33,7 @@ model Tenant {
   integration       TenantIntegration?
   memberships       UserTenantMembership[]
   tags              Tag[]
+  sequences         Sequence[]
 }
 
 model TenantSettings {
@@ -263,10 +264,11 @@ model Campaign {
   complianceContentReviewed Boolean @default(false)
   complianceNotes         String?
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  segment  Segment?       @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment  Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
   steps    CampaignStep[]
   messages Message[]
+  variants CampaignVariant[]
 }
 
 model CampaignStep {
@@ -321,6 +323,7 @@ model Message {
   direction       MessageDirection
   channel         MessageChannel   @default(SMS)
   body            String
+  mediaUrl        String?          // MMS media URL
   fromNumber      String
   toNumber        String
   twilioMessageSid String?
@@ -330,6 +333,7 @@ model Message {
   createdByUserId String?
   campaignId      String?
   campaignStepId  String?
+  variantId       String?          // A/B test variant
   createdAt       DateTime         @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -442,9 +446,12 @@ model OutboundMessageQueue {
   tenantId       String
   campaignId     String?
   campaignStepId String?
+  variantId      String?             // A/B test variant
+  sequenceEnrollmentStepId String?   // For sequence messages
   contactId      String
   phone          String
   body           String
+  mediaUrl       String?             // MMS media URL
   fromNumber     String
   status         OutboundQueueStatus @default(PENDING)
   scheduledAt    DateTime            @default(now())
@@ -458,4 +465,237 @@ model OutboundMessageQueue {
   @@index([tenantId, status, processAfter])
   @@index([campaignId])
   @@index([status, processAfter])
+}
+
+// ============================================
+// DRIP SEQUENCES (Automated Multi-Step Campaigns)
+// ============================================
+
+enum SequenceStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Sequence {
+  id          String         @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  status      SequenceStatus @default(ACTIVE)
+  triggerType String         @default("manual") // manual, tag_added, form_submit, etc
+  triggerConfig String?      // JSON config for trigger
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+
+  @@index([tenantId])
+}
+
+model SequenceStep {
+  id            String   @id @default(uuid())
+  sequenceId    String
+  order         Int
+  delayMinutes  Int      @default(0) // Delay after previous step (0 = immediate for first step)
+  delayUnit     String   @default("minutes") // minutes, hours, days
+  bodyTemplate  String
+  useAiAssist   Boolean  @default(false)
+  mediaUrl      String?  // For MMS
+  createdAt     DateTime @default(now())
+
+  sequence    Sequence                  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  enrollments SequenceEnrollmentStep[]
+
+  @@index([sequenceId, order])
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model SequenceEnrollment {
+  id          String           @id @default(uuid())
+  sequenceId  String
+  contactId   String
+  status      EnrollmentStatus @default(ACTIVE)
+  currentStep Int              @default(0)
+  enrolledAt  DateTime         @default(now())
+  completedAt DateTime?
+  pausedAt    DateTime?
+
+  sequence Sequence                  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  steps    SequenceEnrollmentStep[]
+
+  @@unique([sequenceId, contactId])
+  @@index([status])
+}
+
+model SequenceEnrollmentStep {
+  id           String    @id @default(uuid())
+  enrollmentId String
+  stepId       String
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  skipped      Boolean   @default(false)
+  skipReason   String?
+
+  enrollment SequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step       SequenceStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([enrollmentId])
+  @@index([scheduledAt, sentAt])
+}
+
+// ============================================
+// A/B TESTING
+// ============================================
+
+model CampaignVariant {
+  id           String   @id @default(uuid())
+  campaignId   String
+  name         String   // "Variant A", "Variant B"
+  bodyTemplate String
+  splitPercent Int      @default(50) // Percentage of audience
+  mediaUrl     String?
+  createdAt    DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+// ============================================
+// LINK TRACKING & SHORT URLs
+// ============================================
+
+model TrackedLink {
+  id          String   @id @default(uuid())
+  tenantId    String
+  shortCode   String   @unique
+  originalUrl String
+  campaignId  String?
+  sequenceId  String?
+  createdAt   DateTime @default(now())
+
+  clicks LinkClick[]
+
+  @@index([tenantId])
+  @@index([shortCode])
+}
+
+model LinkClick {
+  id            String   @id @default(uuid())
+  trackedLinkId String
+  contactId     String?
+  phone         String?
+  userAgent     String?
+  ipAddress     String?
+  clickedAt     DateTime @default(now())
+
+  trackedLink TrackedLink @relation(fields: [trackedLinkId], references: [id], onDelete: Cascade)
+
+  @@index([trackedLinkId])
+  @@index([contactId])
+}
+
+// ============================================
+// MESSAGE TEMPLATES
+// ============================================
+
+enum TemplateCategory {
+  APPOINTMENT_REMINDER
+  REVIEW_REQUEST
+  SEASONAL_PROMO
+  RE_ENGAGEMENT
+  WELCOME
+  CONFIRMATION
+  FOLLOW_UP
+  CUSTOM
+}
+
+model MessageTemplate {
+  id          String           @id @default(uuid())
+  tenantId    String?          // null = system-wide template
+  name        String
+  category    TemplateCategory @default(CUSTOM)
+  bodyTemplate String
+  mediaUrl    String?
+  isSystemTemplate Boolean     @default(false)
+  variables   String?          // JSON array of variable names like ["firstName", "appointmentDate"]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([tenantId])
+  @@index([category])
+}
+
+// ============================================
+// BILLING & USAGE METERING
+// ============================================
+
+enum PlanType {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+model TenantPlan {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique
+  planType          PlanType @default(FREE)
+  monthlyMessageLimit Int    @default(500)
+  monthlyCost       Int      @default(0) // in cents
+  stripeCustomerId  String?
+  stripeSubscriptionId String?
+  currentPeriodStart DateTime?
+  currentPeriodEnd  DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([stripeCustomerId])
+}
+
+model UsageRecord {
+  id           String   @id @default(uuid())
+  tenantId     String
+  periodStart  DateTime
+  periodEnd    DateTime
+  smsCount     Int      @default(0)
+  mmsCount     Int      @default(0)
+  segmentCount Int      @default(0) // SMS segments (longer messages count as multiple)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, periodStart])
+  @@index([tenantId])
+}
+
+// ============================================
+// WHITE-LABEL BRANDING
+// ============================================
+
+model TenantBranding {
+  id               String   @id @default(uuid())
+  tenantId         String   @unique
+  logoUrl          String?
+  faviconUrl       String?
+  primaryColor     String   @default("#3B82F6")
+  secondaryColor   String   @default("#1E40AF")
+  companyName      String?  // Override display name
+  supportEmail     String?
+  customDomain     String?  // e.g., sms.mybrand.com
+  customCss        String?  // Additional CSS overrides
+  footerText       String?
+  hideIntelliSend  Boolean  @default(false) // Hide "Powered by IntelliSend"
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([customDomain])
 }

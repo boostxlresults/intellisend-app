@@ -1,5 +1,6 @@
 import { prisma } from '../index';
 import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
+import { recordUsage } from '../routes/billing';
 
 const DISPATCHER_INTERVAL_MS = 5000;
 const MAX_BATCH_SIZE = 50;
@@ -103,6 +104,7 @@ async function processOutboundQueue() {
             fromNumber: queueItem.fromNumber,
             toNumber: queueItem.phone,
             body: queueItem.body,
+            mediaUrl: queueItem.mediaUrl || undefined,
           });
 
           if (smsResult.rateLimited) {
@@ -139,6 +141,35 @@ async function processOutboundQueue() {
                 twilioSid: smsResult.messageSid,
               },
             });
+
+            await recordUsage(tenantId, queueItem.mediaUrl ? 'mms' : 'sms');
+
+            if (queueItem.sequenceEnrollmentStepId) {
+              await prisma.sequenceEnrollmentStep.update({
+                where: { id: queueItem.sequenceEnrollmentStepId },
+                data: { sentAt: new Date() },
+              });
+
+              const enrollmentStep = await prisma.sequenceEnrollmentStep.findUnique({
+                where: { id: queueItem.sequenceEnrollmentStepId },
+                include: { enrollment: true },
+              });
+
+              if (enrollmentStep) {
+                const allSteps = await prisma.sequenceEnrollmentStep.findMany({
+                  where: { enrollmentId: enrollmentStep.enrollmentId },
+                });
+
+                const allSent = allSteps.every(s => s.sentAt || s.skipped);
+
+                if (allSent) {
+                  await prisma.sequenceEnrollment.update({
+                    where: { id: enrollmentStep.enrollmentId },
+                    data: { status: 'COMPLETED', completedAt: new Date() },
+                  });
+                }
+              }
+            }
 
             if (queueItem.campaignId && queueItem.campaignStepId) {
               let conversation = await prisma.conversation.findFirst({

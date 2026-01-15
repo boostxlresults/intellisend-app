@@ -236,4 +236,179 @@ router.post('/:tenantId/ai/preview-message', async (req, res) => {
   }
 });
 
+router.get('/:tenantId/campaigns/:campaignId/variants', async (req, res) => {
+  try {
+    const { tenantId, campaignId } = req.params;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    const variants = await prisma.campaignVariant.findMany({
+      where: { campaignId },
+      orderBy: { createdAt: 'asc' },
+    });
+    
+    res.json(variants);
+  } catch (error: any) {
+    console.error('Error fetching variants:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/campaigns/:campaignId/variants', async (req, res) => {
+  try {
+    const { tenantId, campaignId } = req.params;
+    const { name, bodyTemplate, splitPercent, mediaUrl } = req.body;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    if (!name || !bodyTemplate) {
+      return res.status(400).json({ error: 'name and bodyTemplate are required' });
+    }
+    
+    const existingVariants = await prisma.campaignVariant.findMany({
+      where: { campaignId },
+    });
+    
+    const totalPercent = existingVariants.reduce((sum, v) => sum + v.splitPercent, 0);
+    const newPercent = splitPercent || Math.floor((100 - totalPercent) / 2);
+    
+    if (totalPercent + newPercent > 100) {
+      return res.status(400).json({ error: 'Total split percentage cannot exceed 100%' });
+    }
+    
+    const variant = await prisma.campaignVariant.create({
+      data: {
+        campaignId,
+        name,
+        bodyTemplate,
+        splitPercent: newPercent,
+        mediaUrl,
+      },
+    });
+    
+    res.status(201).json(variant);
+  } catch (error: any) {
+    console.error('Error creating variant:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:tenantId/campaigns/:campaignId/variants/:variantId', async (req, res) => {
+  try {
+    const { tenantId, campaignId, variantId } = req.params;
+    const { name, bodyTemplate, splitPercent, mediaUrl } = req.body;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    const variant = await prisma.campaignVariant.update({
+      where: { id: variantId },
+      data: {
+        name,
+        bodyTemplate,
+        splitPercent,
+        mediaUrl,
+      },
+    });
+    
+    res.json(variant);
+  } catch (error: any) {
+    console.error('Error updating variant:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:tenantId/campaigns/:campaignId/variants/:variantId', async (req, res) => {
+  try {
+    const { tenantId, campaignId, variantId } = req.params;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    await prisma.campaignVariant.delete({
+      where: { id: variantId },
+    });
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting variant:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:tenantId/campaigns/:campaignId/ab-results', async (req, res) => {
+  try {
+    const { tenantId, campaignId } = req.params;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+      include: { variants: true },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    const results = await Promise.all(
+      campaign.variants.map(async (variant) => {
+        const messages = await prisma.message.findMany({
+          where: { campaignId, variantId: variant.id },
+        });
+        
+        const sent = messages.length;
+        const delivered = messages.filter(m => m.status === 'delivered').length;
+        const failed = messages.filter(m => m.status === 'failed').length;
+        
+        const events = await prisma.messageEvent.findMany({
+          where: { campaignId },
+        });
+        
+        const clicks = await prisma.linkClick.count({
+          where: {
+            trackedLink: { campaignId },
+          },
+        });
+        
+        return {
+          variantId: variant.id,
+          variantName: variant.name,
+          sent,
+          delivered,
+          failed,
+          deliveryRate: sent > 0 ? (delivered / sent * 100).toFixed(1) : '0',
+          clicks,
+          clickRate: sent > 0 ? (clicks / sent * 100).toFixed(1) : '0',
+        };
+      })
+    );
+    
+    res.json(results);
+  } catch (error: any) {
+    console.error('Error fetching A/B results:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

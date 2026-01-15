@@ -511,4 +511,92 @@ export const api = {
       trend: Array<{ date: string; optOuts: number; complaints: number; blocked: number }>;
       recentOptOuts: Array<{ id: string; phone: string; reason: string; createdAt: string }>;
     }>(`${API_BASE}/tenants/${tenantId}/analytics/compliance?range=${range}`),
+
+  getSequences: (tenantId: string) =>
+    request<any[]>(`${API_BASE}/tenants/${tenantId}/sequences`),
+
+  createSequence: (tenantId: string, data: { name: string; description?: string; steps?: any[] }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/sequences`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getSequence: (tenantId: string, sequenceId: string) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/sequences/${sequenceId}`),
+
+  updateSequence: (tenantId: string, sequenceId: string, data: any) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/sequences/${sequenceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteSequence: (tenantId: string, sequenceId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/sequences/${sequenceId}`, {
+      method: 'DELETE',
+    }),
+
+  enrollInSequence: (tenantId: string, sequenceId: string, contactIds: string[]) =>
+    request<{ enrolled: number; skipped: number }>(`${API_BASE}/tenants/${tenantId}/sequences/${sequenceId}/enroll`, {
+      method: 'POST',
+      body: JSON.stringify({ contactIds }),
+    }),
+
+  getTemplates: (tenantId: string, category?: string) => {
+    const params = category ? `?category=${category}` : '';
+    return request<any[]>(`${API_BASE}/tenants/${tenantId}/templates${params}`);
+  },
+
+  createTemplate: (tenantId: string, data: { name: string; category?: string; bodyTemplate: string; mediaUrl?: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/templates`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  seedSystemTemplates: () =>
+    request<{ message: string; count: number }>(`${API_BASE}/templates/seed`, { method: 'POST' }),
+
+  getTrackedLinks: (tenantId: string) =>
+    request<any[]>(`${API_BASE}/tenants/${tenantId}/links`),
+
+  createTrackedLink: (tenantId: string, originalUrl: string, options?: { campaignId?: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/links`, {
+      method: 'POST',
+      body: JSON.stringify({ originalUrl, ...options }),
+    }),
+
+  getLinkAnalytics: (tenantId: string, linkId: string) =>
+    request<{ link: any; totalClicks: number; uniqueContacts: number }>(`${API_BASE}/tenants/${tenantId}/links/${linkId}/analytics`),
+
+  getBranding: (tenantId: string) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/branding`),
+
+  updateBranding: (tenantId: string, data: any) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/branding`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getBilling: (tenantId: string) =>
+    request<{ plan: any; usage: any; availablePlans: any[] }>(`${API_BASE}/tenants/${tenantId}/billing`),
+
+  upgradePlan: (tenantId: string, planType: string) =>
+    request<{ success: boolean; plan: any; message: string }>(`${API_BASE}/tenants/${tenantId}/billing/upgrade`, {
+      method: 'POST',
+      body: JSON.stringify({ planType }),
+    }),
+
+  getUsageHistory: (tenantId: string) =>
+    request<any[]>(`${API_BASE}/tenants/${tenantId}/billing/usage-history`),
+
+  getCampaignVariants: (tenantId: string, campaignId: string) =>
+    request<any[]>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/variants`),
+
+  createCampaignVariant: (tenantId: string, campaignId: string, data: { name: string; bodyTemplate: string; splitPercent?: number }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/variants`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getABResults: (tenantId: string, campaignId: string) =>
+    request<any[]>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/ab-results`),
 };

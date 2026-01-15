@@ -15,6 +15,9 @@ import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import TwilioSetup from './pages/TwilioSetup';
 import Login from './pages/Login';
+import Sequences from './pages/Sequences';
+import Templates from './pages/Templates';
+import Billing from './pages/Billing';
 
 function App() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -73,9 +76,12 @@ function App() {
           <NavLink to="/contacts" className={location.pathname.startsWith('/contacts') ? 'active' : ''}>Contacts</NavLink>
           <NavLink to="/segments" className={({ isActive }) => isActive ? 'active' : ''}>Segments</NavLink>
           <NavLink to="/campaigns" className={({ isActive }) => isActive ? 'active' : ''}>Campaigns</NavLink>
+          <NavLink to="/sequences" className={({ isActive }) => isActive ? 'active' : ''}>Sequences</NavLink>
+          <NavLink to="/templates" className={({ isActive }) => isActive ? 'active' : ''}>Templates</NavLink>
           <NavLink to="/conversations" className={location.pathname.startsWith('/conversations') ? 'active' : ''}>Conversations</NavLink>
           <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''}>Analytics</NavLink>
           <NavLink to="/knowledge-base" className={({ isActive }) => isActive ? 'active' : ''}>Knowledge Base</NavLink>
+          <NavLink to="/billing" className={({ isActive }) => isActive ? 'active' : ''}>Billing</NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>Settings</NavLink>
         </nav>
       </aside>
@@ -153,6 +159,9 @@ function App() {
               <Route path="/contacts/:contactId" element={<ContactDetail />} />
               <Route path="/segments" element={<Segments />} />
               <Route path="/campaigns" element={<Campaigns />} />
+              <Route path="/sequences" element={<Sequences />} />
+              <Route path="/templates" element={<Templates />} />
+              <Route path="/billing" element={<Billing />} />
               <Route path="/conversations" element={<Conversations />} />
               <Route path="/conversations/:conversationId" element={<ConversationDetail />} />
               <Route path="/analytics" element={<Analytics />} />

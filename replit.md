@@ -168,3 +168,41 @@ The application runs with two servers:
   - Tag management API (create, list, delete tags)
   - Segment builder with AND/OR/NONE tag filtering logic
   - Segment preview endpoint to preview contacts matching tag criteria
+- **Automated Drip Sequences**:
+  - Sequence model with multi-step message automation
+  - SequenceStep with configurable delays (minutes, hours, days)
+  - SequenceEnrollment for contact tracking through sequences
+  - Sequence processor service runs every 30 seconds
+  - Queue-based sending with proper completion tracking
+  - Frontend UI for creating and managing sequences
+- **A/B Testing for Campaigns**:
+  - CampaignVariant model with split percentages
+  - Variant creation and management endpoints
+  - A/B results endpoint for comparing variant performance
+  - Tracks delivery rates and click rates per variant
+- **Link Tracking & Short URLs**:
+  - TrackedLink model with unique short codes
+  - LinkClick model for tracking engagement
+  - Redirect handler that records clicks with contact attribution
+  - Link analytics endpoint showing total and unique clicks
+- **MMS Support**:
+  - mediaUrl field added to Message and OutboundMessageQueue
+  - Twilio client updated to send media attachments
+  - Queue dispatcher handles MMS with proper usage metering
+- **Template Library**:
+  - MessageTemplate model with categories (APPOINTMENT_REMINDER, REVIEW_REQUEST, SEASONAL_PROMO, etc.)
+  - 11 pre-built system templates for home services
+  - Custom template creation per tenant
+  - Template variables support ({{firstName}}, {{companyName}}, etc.)
+- **Billing & Usage Metering**:
+  - TenantPlan model with FREE, STARTER, PROFESSIONAL, ENTERPRISE tiers
+  - UsageRecord model tracking monthly SMS/MMS counts
+  - Usage metering integrated into queue dispatcher
+  - Plan upgrade endpoint (Stripe integration placeholder)
+  - Billing dashboard showing current plan and usage
+- **White-Label Branding**:
+  - TenantBranding model for custom logos, colors, domains
+  - Primary/secondary color customization
+  - Custom domain support
+  - Hide "Powered by IntelliSend" option
+  - Branding API endpoints for get/update

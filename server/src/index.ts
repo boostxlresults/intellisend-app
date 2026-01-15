@@ -20,9 +20,15 @@ import authRoutes from './routes/auth';
 import integrationRoutes from './routes/integrations';
 import consentRoutes from './routes/consent';
 import tagRoutes from './routes/tags';
+import sequenceRoutes from './routes/sequences';
+import templateRoutes from './routes/templates';
+import linkRoutes from './routes/links';
+import brandingRoutes from './routes/branding';
+import billingRoutes from './routes/billing';
 import { requireAuth } from './middleware/auth';
 import { startCampaignScheduler } from './services/campaignScheduler';
 import { startQueueDispatcher } from './services/queueDispatcher';
+import { startSequenceProcessor } from './services/sequenceProcessor';
 
 dotenv.config();
 
@@ -82,6 +88,13 @@ app.use('/api/tenants', requireAuth, analyticsRoutes);
 app.use('/api/tenants', requireAuth, integrationRoutes);
 app.use('/api/tenants', requireAuth, consentRoutes);
 app.use('/api/tenants', requireAuth, tagRoutes);
+app.use('/api/tenants', requireAuth, sequenceRoutes);
+app.use('/api/tenants', requireAuth, templateRoutes);
+app.use('/api/tenants', requireAuth, linkRoutes);
+app.use('/api/tenants', requireAuth, brandingRoutes);
+app.use('/api/tenants', requireAuth, billingRoutes);
+app.use('/api', templateRoutes);
+app.use('/', linkRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 
@@ -106,6 +119,7 @@ async function main() {
     
     startCampaignScheduler();
     startQueueDispatcher();
+    startSequenceProcessor();
     
     app.listen(PORT, () => {
       console.log(`IntelliSend server running on port ${PORT}`);
