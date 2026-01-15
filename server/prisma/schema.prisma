@@ -18,22 +18,23 @@ model Tenant {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  numbers           TenantNumber[]
-  users             User[]
-  contacts          Contact[]
-  suppressions      Suppression[]
-  segments          Segment[]
-  campaigns         Campaign[]
-  conversations     Conversation[]
-  messages          Message[]
-  aiPersonas        AiPersona[]
-  knowledgeArticles KnowledgeBaseArticle[]
-  settings          TenantSettings?
-  messageEvents     MessageEvent[]
-  integration       TenantIntegration?
-  memberships       UserTenantMembership[]
-  tags              Tag[]
-  sequences         Sequence[]
+  numbers              TenantNumber[]
+  users                User[]
+  contacts             Contact[]
+  suppressions         Suppression[]
+  segments             Segment[]
+  campaigns            Campaign[]
+  conversations        Conversation[]
+  messages             Message[]
+  aiPersonas           AiPersona[]
+  knowledgeArticles    KnowledgeBaseArticle[]
+  settings             TenantSettings?
+  messageEvents        MessageEvent[]
+  integration          TenantIntegration?
+  memberships          UserTenantMembership[]
+  tags                 Tag[]
+  sequences            Sequence[]
+  serviceTitanConfig   ServiceTitanConfig?
 }
 
 model TenantSettings {
@@ -295,6 +296,9 @@ model Conversation {
   contactId     String
   status        ConversationStatus @default(OPEN)
   lastMessageAt DateTime           @default(now())
+  needsAttention Boolean           @default(false)
+  serviceTitanBookingId       String?
+  serviceTitanBookingCreatedAt DateTime?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
@@ -304,6 +308,7 @@ model Conversation {
 
   @@index([tenantId])
   @@index([contactId])
+  @@index([tenantId, needsAttention, lastMessageAt])
 }
 
 enum MessageDirection {
@@ -698,4 +703,23 @@ model TenantBranding {
   updatedAt        DateTime @updatedAt
 
   @@index([customDomain])
+}
+
+// ============================================
+// SERVICETITAN INTEGRATION
+// ============================================
+
+model ServiceTitanConfig {
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique
+  tenantApiBaseUrl     String
+  serviceTitanTenantId String
+  clientId             String
+  clientSecret         String
+  bookingProvider      String   @default("IntelliSend-SMS")
+  enabled              Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

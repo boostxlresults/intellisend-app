@@ -1,0 +1,472 @@
+Now that we are building IntelliSend toward working as a multi-tenant SMS platform with Twilio and AI. Next, I want to add a ServiceTitan Bookings integration per tenant, and improve the Conversations UX to support this workflow:
+When a customer replies to an SMS campaign, IntelliSend keeps the full SMS conversation as the primary workspace, but automatically creates a ServiceTitan Booking as a notification that a CSR needs to engage with that conversation. The Booking should contain as much conversation context as possible. In IntelliSend, the Conversations tab should be searchable and show “engaged / needs attention” conversations at the top and the conversation tabs should be ENGAGED, OPT OUTS, Complaints.  Organized by OpenAI agent.
+Please implement the following:
+====================================================
+DATA MODEL: ServiceTitan configuration per tenant
+ ====================================================
+
+
+Add a new Prisma model to server/prisma/schema.prisma:
+ServiceTitanConfig:
+
+
+id: String @id @default(uuid())
+
+
+tenantId: String @unique
+
+
+tenantApiBaseUrl: String (e.g. ServiceTitan API base URL)
+
+
+serviceTitanTenantId: String (ST tenant ID)
+
+
+clientId: String
+
+
+clientSecret: String
+
+
+bookingProvider: String (booking provider tag name, e.g. "IntelliSend-SMS")
+
+
+enabled: Boolean @default(false)
+
+
+createdAt: DateTime @default(now())
+
+
+updatedAt: DateTime @updatedAt
+
+
+Relation back to Tenant (tenant).
+
+
+Also extend Conversation so we can link ST bookings and track engagement:
+Add fields:
+
+
+serviceTitanBookingId: String?
+
+
+serviceTitanBookingCreatedAt: DateTime?
+
+
+needsAttention: Boolean @default(false) // indicates conversation has an inbound message that needs CSR/user attention
+
+
+Add an index on (tenantId, needsAttention, lastMessageAt) to support sorting.
+
+
+Run npx prisma db push after updating the schema.
+====================================================
+2) SERVICE LAYER: ServiceTitan client & booking helper
+Create server/src/services/serviceTitanClient.ts with:
+Logic to fetch ServiceTitanConfig for a given tenantId.
+
+
+A helper to obtain an OAuth access token using clientId / clientSecret (cache tokens in memory with expiry to avoid re-auth on every call).
+
+
+createBookingFromInboundSms(options) function with roughly this signature:
+
+
+interface CreateBookingFromInboundSmsOptions {
+  tenantId: string;
+  contact: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email?: string | null;
+  };
+  conversationId: string;
+  toNumber: string;        // Twilio number that received the SMS
+  lastInboundMessage: string;
+  conversationSummary: string; // short summary built from the last N messages
+}
+
+Behavior:
+If there is no ServiceTitanConfig for this tenant or enabled is false, return early.
+
+
+Use the ServiceTitan APIs (via the configured tenantApiBaseUrl, serviceTitanTenantId, and bookingProvider) to:
+
+
+(Optionally) upsert a customer/contact by phone number.
+
+
+Create a Booking using the {bookingProvider}/bookings endpoint, including:
+
+
+Customer name and phone.
+
+
+Notes that include:
+
+
+The IntelliSend tenant name.
+
+
+The Twilio number (toNumber) that received the SMS.
+
+
+The last inbound message text.
+
+
+A short conversation context summary (see section 3).
+
+
+Optionally a URL back to the IntelliSend conversation (we can just include the conversation ID in the notes for now).
+
+
+Return the created booking ID (or null on failure).
+
+
+Log meaningful errors but DO NOT throw unhandled exceptions; the SMS processing flow must not break if ST is down.
+
+
+====================================================
+3) CONVERSATION CONTEXT SUMMARY FOR THE BOOKING
+In a small helper file (e.g. server/src/services/conversationSummary.ts), implement:
+buildConversationSummary(conversationId: string, maxMessages: number = 5, maxChars: number = 800): Promise<string>
+
+
+Behavior:
+Fetch the most recent maxMessages messages for that conversation, ordered descending by createdAt.
+
+
+Build a text summary that looks like:
+
+ Recent SMS conversation:
+Customer: ...
+Agent: ...
+Customer: ...
+
+
+Trim total length to maxChars. If necessary, truncate older messages and append ....
+
+
+This is not AI summarization; just a compact transcript snippet.
+
+
+This summary string will be passed into createBookingFromInboundSms() and included in the Booking notes.
+====================================================
+4) TRIGGER: create ST booking on inbound SMS reply
+Update server/src/routes/twilioWebhooks.ts:
+In the POST /inbound handler, in the normal (non-STOP) flow, after:
+
+
+Contact creation/lookup
+
+
+Conversation creation/lookup
+
+
+Message creation
+
+
+Conversation + contact last activity updates
+
+
+Add logic:
+If there is a ServiceTitanConfig for this tenant with enabled = true:
+
+
+If conversation.serviceTitanBookingId is null (meaning no booking has been created yet for this conversation), then:
+
+
+Build a conversation summary using buildConversationSummary(conversation.id, 5, 800).
+
+
+Call createBookingFromInboundSms(...) with:
+
+
+Tenant ID
+
+
+Contact info
+
+
+Conversation ID
+
+
+To number (Twilio number)
+
+
+Body as lastInboundMessage
+
+
+The summary string
+
+
+If a booking is successfully created and returns an ID:
+
+
+Update the Conversation record with:
+
+
+serviceTitanBookingId
+
+
+serviceTitanBookingCreatedAt = new Date()
+
+
+needsAttention = true
+
+
+If a booking has already been created for this conversation, we do NOT create another one; instead, we just keep updating messages and lastMessageAt. (We may later support multiple bookings, but for now one booking per conversation is enough to notify ST.)
+
+
+====================================================
+5) CONVERSATIONS UX: searchable, “engaged at top”
+We want the Conversations list in IntelliSend to:
+Be searchable by:
+
+
+Contact name
+
+
+Phone
+
+
+Message text (if feasible without overcomplicating DB queries)
+
+
+Always show “engaged / needs attention” conversations at the top, then sort by lastMessageAt descending.
+
+
+Update:
+server/src/routes/conversations.ts to:
+
+
+Add optional query params to the conversations list endpoint:
+
+
+search (string)
+
+
+When querying conversations:
+
+
+Filter by tenantId as today.
+
+
+If search is provided:
+
+
+Join Contact and filter where:
+
+
+contact.firstName or contact.lastName ILIKE %search%, OR
+
+
+contact.phone ILIKE %search%, OR
+
+
+Optionally, recent Message.body ILIKE %search% (if performance is acceptable; limit to last N messages).
+
+
+Order results by:
+
+
+needsAttention DESC (true first),
+
+
+then lastMessageAt DESC,
+
+
+then createdAt DESC as a fallback.
+
+
+client/src/pages/Conversations.tsx:
+
+
+Add a search input at the top (e.g. a simple text box) that debounces user input and passes search as a query param when fetching conversations.
+
+
+Visually indicate conversations with needsAttention = true:
+
+
+e.g. bold text, a colored dot/badge, or a “Needs attention” tag.
+
+
+The list should show “most urgent” (needsAttention=true, most recent) at the top by default.
+
+
+When a user opens a Conversation (ConversationDetail page) and sends an outbound reply from IntelliSend:
+
+
+In server/src/routes/conversations.ts (message send handler for outbound):
+
+
+After successfully creating the outbound message and updating lastMessageAt, set needsAttention = false for that conversation.
+
+
+This ensures that once someone has replied, the conversation no longer appears as “awaiting human action” in the list.
+
+
+====================================================
+6) TENANT SETTINGS UI: configure ServiceTitan integration
+Integration config should be per tenant and very easy to manage.
+Backend:
+In server/src/routes/tenants.ts (or create a dedicated server/src/routes/serviceTitan.ts), add endpoints:
+
+
+GET /api/tenants/:tenantId/servicetitan-config
+
+
+Returns the current ServiceTitanConfig (without exposing secrets if you prefer to keep clientSecret hidden).
+
+
+POST /api/tenants/:tenantId/servicetitan-config
+
+
+Accepts JSON body with:
+
+
+tenantApiBaseUrl
+
+
+serviceTitanTenantId
+
+
+clientId
+
+
+clientSecret (optional to send if not changing)
+
+
+bookingProvider
+
+
+enabled (boolean)
+
+
+Creates or updates the config.
+
+
+If enabled = true but credentials are incomplete, return a 400 with an error.
+
+
+Optional: a simple POST /api/tenants/:tenantId/servicetitan-test endpoint that:
+
+
+Attempts to fetch something trivial from ST with the current config (e.g. tenant info) and returns { ok: true } or { ok: false, error: "..." } so we can display a “Test connection” button in the UI.
+
+
+Frontend:
+In client/src/pages/Settings.tsx, in the tenant settings area:
+
+
+Add a “ServiceTitan Integration” card/section with:
+
+
+A toggle/switch: “Enable ServiceTitan Bookings integration”
+
+
+Input fields for:
+
+
+API Base URL
+
+
+ServiceTitan Tenant ID
+
+
+Client ID
+
+
+Client Secret (show as password; allow leaving blank to keep existing)
+
+
+Booking Provider (text input)
+
+
+A “Test Connection” button that calls the test endpoint and shows a success or error message.
+
+
+A Save button that calls the POST /servicetitan-config endpoint.
+
+
+On load, fetch the current config and populate the fields.
+
+
+UX intent:
+A tenant admin should be able to:
+
+
+Turn integration on/off with a toggle.
+
+
+Paste credentials from the ST dev portal.
+
+
+Click “Test Connection”.
+
+
+Click “Save”.
+
+
+Once enabled, any inbound SMS that creates/updates an active conversation will also generate a ServiceTitan Booking (one per conversation) as a notification that a conversation needs CSR interaction.
+
+
+====================================================
+7) LOGGING & SAFETY
+In all ServiceTitan integration code:
+
+
+Log tenantId + high-level error messages when API calls fail (without logging secrets).
+
+
+Do not allow any unhandled exceptions to propagate from ST calls into Twilio webhook routes; errors should be caught and logged, and the SMS flow should still return a 200 with an empty TwiML response.
+
+
+If ServiceTitanConfig.enabled = true but token retrieval fails or the booking creation fails:
+
+
+Log the problem and continue; do not mark the conversation as serviceTitanBookingId set or needsAttention = false.
+
+
+The worst case should be “no booking created” rather than broken SMS.
+
+
+====================================================
+8) FILES TO SHOW AFTER IMPLEMENTATION
+After completing all of the above, please:
+Run cd server && npx prisma db push to apply schema changes.
+
+
+Restart the backend.
+
+
+Then print the updated contents of:
+
+
+server/prisma/schema.prisma
+
+
+server/src/services/serviceTitanClient.ts
+
+
+server/src/services/conversationSummary.ts (or whatever file you create for summaries)
+
+
+server/src/routes/twilioWebhooks.ts
+
+
+server/src/routes/conversations.ts
+
+
+server/src/routes/tenants.ts (or serviceTitan.ts if you create a separate routes file)
+
+
+client/src/pages/Conversations.tsx
+
+
+client/src/pages/Settings.tsx
+
+
+This will allow us to review the integration, adjust the ST payload details, and tweak the Conversations UX.
+
