@@ -30,7 +30,7 @@ interface BillingData {
 }
 
 export default function Billing() {
-  const { currentTenant } = useTenant();
+  const { selectedTenant: currentTenant } = useTenant();
   const [billingData, setBillingData] = useState<BillingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState<string | null>(null);

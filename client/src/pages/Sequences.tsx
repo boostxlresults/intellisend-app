@@ -23,7 +23,7 @@ interface Sequence {
 }
 
 export default function Sequences() {
-  const { currentTenant } = useTenant();
+  const { selectedTenant: currentTenant } = useTenant();
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

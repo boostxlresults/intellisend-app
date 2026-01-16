@@ -25,7 +25,7 @@ const CATEGORIES = [
 ];
 
 export default function Templates() {
-  const { currentTenant } = useTenant();
+  const { selectedTenant: currentTenant } = useTenant();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
