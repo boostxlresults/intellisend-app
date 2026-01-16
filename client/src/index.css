@@ -18,7 +18,7 @@ body {
 
 .sidebar {
   width: 220px;
-  background: #1a1a2e;
+  background: #0F172A;
   color: white;
   padding: 20px 0;
 }
@@ -40,7 +40,7 @@ body {
 
 .sidebar nav a:hover,
 .sidebar nav a.active {
-  background: #2d2d44;
+  background: #1E293B;
   color: white;
 }
 
