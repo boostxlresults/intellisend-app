@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import { api, Conversation, Campaign } from '../api/client';
 
 export default function Dashboard() {
   const { selectedTenant } = useTenant();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +69,12 @@ export default function Dashboard() {
           ) : (
             <ul className="conversation-list">
               {conversations.slice(0, 5).map(conv => (
-                <li key={conv.id} className="conversation-item">
+                <li 
+                  key={conv.id} 
+                  className="conversation-item" 
+                  onClick={() => navigate(`/conversations/${conv.id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="name">{conv.contact?.firstName} {conv.contact?.lastName}</div>
                   <div className="phone">{conv.contact?.phone}</div>
                   {conv.messages?.[0] && (
