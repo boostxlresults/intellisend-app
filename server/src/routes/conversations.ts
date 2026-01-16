@@ -119,6 +119,14 @@ router.get('/:tenantId/conversations/:conversationId', async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
     
+    if (conversation.needsAttention) {
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { needsAttention: false },
+      });
+      conversation.needsAttention = false;
+    }
+    
     res.json(conversation);
   } catch (error: any) {
     console.error('Error fetching conversation:', error);
