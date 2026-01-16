@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import { api, Contact } from '../api/client';
 
 export default function ContactDetail() {
   const { contactId } = useParams<{ contactId: string }>();
   const { selectedTenant } = useTenant();
+  const navigate = useNavigate();
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(true);
   const [newTag, setNewTag] = useState('');
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [sending, setSending] = useState(false);
 
   const fetchContact = async () => {
     if (!selectedTenant || !contactId) return;
@@ -51,6 +55,23 @@ export default function ContactDetail() {
     }
   };
 
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTenant || !contactId || !messageText.trim()) return;
+    setSending(true);
+    try {
+      const result = await api.startConversation(selectedTenant.id, contactId, messageText.trim());
+      setShowMessageModal(false);
+      setMessageText('');
+      navigate(`/conversations/${result.conversationId}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to send message: ' + message);
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading) {
     return <p>Loading contact...</p>;
   }
@@ -68,6 +89,9 @@ export default function ContactDetail() {
           </Link>
           <h2 style={{ marginTop: '8px' }}>{contact.firstName} {contact.lastName}</h2>
         </div>
+        <button className="btn btn-primary" onClick={() => setShowMessageModal(true)}>
+          Send Message
+        </button>
       </div>
       
       <div className="grid-2">
@@ -149,6 +173,38 @@ export default function ContactDetail() {
           </ul>
         )}
       </div>
+
+      {showMessageModal && (
+        <div className="modal-overlay" onClick={() => setShowMessageModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Send Message to {contact.firstName}</h3>
+            <form onSubmit={handleSendMessage}>
+              <div className="form-group">
+                <label>Message</label>
+                <textarea
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  placeholder="Type your message..."
+                  rows={4}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', resize: 'vertical' }}
+                  required
+                />
+                <p style={{ fontSize: '12px', color: '#718096', marginTop: '6px' }}>
+                  This will start a new conversation with {contact.phone}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowMessageModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={sending || !messageText.trim()}>
+                  {sending ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
