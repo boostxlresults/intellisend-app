@@ -71,11 +71,9 @@ async function getAccessToken(config: {
         grant_type: 'client_credentials',
         client_id: config.clientId,
         client_secret: config.clientSecret,
+        scope: 'api',
       }),
     });
-
-    // Note: ServiceTitan OAuth doesn't require explicit scope parameter in token request.
-    // Scopes are determined by what's configured in the Developer Portal for the app.
 
     if (!response.ok) {
       console.error(`[ServiceTitan] Token fetch failed: ${response.status} ${response.statusText}`);
