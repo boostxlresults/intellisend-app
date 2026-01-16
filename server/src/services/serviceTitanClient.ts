@@ -71,7 +71,6 @@ async function getAccessToken(config: {
         grant_type: 'client_credentials',
         client_id: config.clientId,
         client_secret: config.clientSecret,
-        scope: 'api',
       }),
     });
 
