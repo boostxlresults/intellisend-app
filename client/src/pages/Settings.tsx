@@ -54,7 +54,7 @@ export default function Settings() {
     if (!selectedTenant) return;
     setLoading(true);
     try {
-      const [nums, supps, pers, settings, integrations, stConfigData] = await Promise.all([
+      const results = await Promise.allSettled([
         api.getTenantNumbers(selectedTenant.id),
         api.getSuppressions(selectedTenant.id),
         api.getAiPersonas(selectedTenant.id),
@@ -62,13 +62,17 @@ export default function Settings() {
         api.getIntegrations(selectedTenant.id),
         api.getServiceTitanConfig(selectedTenant.id),
       ]);
-      setNumbers(nums);
-      setSuppressions(supps);
-      setPersonas(pers);
-      setTenantSettings(settings);
-      setTwilioIntegration(integrations);
-      setStConfig(stConfigData);
-      if (stConfigData) {
+      
+      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult] = results;
+      
+      if (numsResult.status === 'fulfilled') setNumbers(numsResult.value);
+      if (suppsResult.status === 'fulfilled') setSuppressions(suppsResult.value);
+      if (persResult.status === 'fulfilled') setPersonas(persResult.value);
+      if (settingsResult.status === 'fulfilled') setTenantSettings(settingsResult.value);
+      if (integrationsResult.status === 'fulfilled') setTwilioIntegration(integrationsResult.value);
+      if (stConfigResult.status === 'fulfilled' && stConfigResult.value) {
+        const stConfigData = stConfigResult.value;
+        setStConfig(stConfigData);
         setStForm({
           tenantApiBaseUrl: stConfigData.tenantApiBaseUrl || '',
           serviceTitanTenantId: stConfigData.serviceTitanTenantId || '',
