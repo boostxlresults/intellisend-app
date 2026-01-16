@@ -142,35 +142,19 @@ export async function createBookingFromInboundSms(
       hour12: true,
     });
 
-    const bookingNotes = [
-      `════════════════════════════════════════`,
-      `🚨 CSR ACTION REQUIRED`,
-      `════════════════════════════════════════`,
+    // Build the full summary with conversation history - ServiceTitan shows this in the booking form
+    const fullSummary = [
+      `SMS Reply from Customer`,
       ``,
-      `A customer has replied to an SMS campaign and needs attention.`,
-      ``,
-      `📋 BOOKING DETAILS`,
-      `────────────────────────────────────────`,
-      `Customer: ${options.contact.firstName} ${options.contact.lastName}`.trim(),
-      `Phone: ${options.contact.phone}`,
-      options.contact.email ? `Email: ${options.contact.email}` : null,
-      ``,
-      options.campaignName ? `📣 Campaign: ${options.campaignName}` : null,
-      `📱 Twilio Number: ${options.toNumber}`,
-      `🕐 Created: ${createdAt}`,
-      ``,
-      `💬 LAST MESSAGE FROM CUSTOMER`,
-      `────────────────────────────────────────`,
+      `LATEST MESSAGE:`,
       `"${options.lastInboundMessage}"`,
       ``,
       options.conversationSummary,
       ``,
-      `🔗 VIEW FULL CONVERSATION`,
-      `────────────────────────────────────────`,
-      conversationUrl,
-      ``,
-      `────────────────────────────────────────`,
-      `Source: ${config.bookingProvider} | Tenant: ${config.tenant.publicName}`,
+      options.campaignName ? `Campaign: ${options.campaignName}` : null,
+      `Twilio Number: ${options.toNumber}`,
+      `Created: ${createdAt}`,
+      conversationUrl ? `View in IntelliSend: ${conversationUrl}` : null,
     ].filter(line => line !== null).join('\n');
 
     const bookingPayload = {
@@ -188,8 +172,7 @@ export async function createBookingFromInboundSms(
           value: options.contact.email,
         }] : []),
       ],
-      summary: `SMS Reply - ${options.lastInboundMessage.substring(0, 80)}${options.lastInboundMessage.length > 80 ? '...' : ''} [Full chat in notes]`,
-      body: bookingNotes,
+      summary: fullSummary,
     };
 
     // Use booking-provider/{bookingProviderId}/bookings endpoint under tenant
