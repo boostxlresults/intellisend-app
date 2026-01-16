@@ -182,7 +182,10 @@ export async function createBookingFromInboundSms(
       notes: bookingNotes,
     };
 
-    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/bookings`;
+    // Use booking-provider endpoint, not tenant endpoint (POST is only available on booking-provider route)
+    // The booking provider tag is configured in IntelliSend settings (e.g., "IntelliSend-SMS")
+    const bookingProviderTag = encodeURIComponent(config.bookingProvider);
+    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/booking-provider/${bookingProviderTag}/bookings`;
     
     console.log(`[ServiceTitan] Creating booking at: ${bookingUrl}`);
     console.log(`[ServiceTitan] Using App Key: ${config.appKey.substring(0, 10)}...`);
