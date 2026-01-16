@@ -182,17 +182,9 @@ export async function createBookingFromInboundSms(
       notes: bookingNotes,
     };
 
-    // Use booking-providers endpoint (plural) with numeric ID, not tenant endpoint
-    // POST is only available on the booking-providers route with the numeric provider ID
-    if (!config.bookingProviderId) {
-      console.error(`[ServiceTitan] Missing bookingProviderId for tenant ${options.tenantId}`);
-      return {
-        success: false,
-        error: 'Booking Provider ID not configured. Please add the numeric ID from ServiceTitan Booking Provider Tags.',
-        errorCode: 'API_ERROR'
-      };
-    }
-    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/booking-providers/${config.bookingProviderId}/bookings`;
+    // Use booking-provider-bookings endpoint under tenant
+    // This is the correct endpoint for creating bookings via a connected booking provider app
+    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/booking-provider-bookings`;
     
     console.log(`[ServiceTitan] Creating booking at: ${bookingUrl}`);
     console.log(`[ServiceTitan] Using App Key: ${config.appKey.substring(0, 10)}...`);
