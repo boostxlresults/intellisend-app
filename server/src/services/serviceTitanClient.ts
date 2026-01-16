@@ -1,5 +1,13 @@
 import { prisma } from '../index';
 
+function formatPhoneForServiceTitan(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return digits.slice(1);
+  }
+  return digits;
+}
+
 interface TokenCache {
   accessToken: string;
   expiresAt: number;
@@ -173,7 +181,7 @@ export async function createBookingFromInboundSms(
       contacts: [
         {
           type: 'MobilePhone',
-          value: options.contact.phone,
+          value: formatPhoneForServiceTitan(options.contact.phone),
         },
         ...(options.contact.email ? [{
           type: 'Email',
