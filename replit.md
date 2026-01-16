@@ -207,8 +207,8 @@ The application runs with two servers:
   - Hide "Powered by IntelliSend" option
   - Branding API endpoints for get/update
 - **ServiceTitan Bookings Integration**:
-  - ServiceTitanConfig model for per-tenant API credentials (API base URL, tenant ID, client ID/secret)
-  - OAuth token caching with automatic refresh
+  - ServiceTitanConfig model for per-tenant API credentials (API base URL, tenant ID, App Key, Client ID/Secret)
+  - OAuth token caching with automatic refresh (15-minute token lifetime)
   - Automatic booking creation on inbound SMS replies via job queue
   - ServiceTitanBookingJob table with lease-based processing for reliable exactly-once booking creation
   - Conversation needsAttention flag for prioritizing customer replies
@@ -217,3 +217,10 @@ The application runs with two servers:
   - Conversations page shows "Needs Attention" badges for customer replies
   - Robust retry mechanism with exponential backoff for transient failures
   - Idempotency via unique messageSid constraint prevents duplicate bookings
+  - **Setup Requirements**:
+    1. Developer Portal (developer.servicetitan.io): Create app, enable CRM > Bookings scope (read/write), get App Key (ak1.xxx)
+    2. ServiceTitan Settings: Create Booking Provider Tag, connect app via API Application Access
+    3. **CRITICAL**: Set "Restriction by Booking Provider" to "No Restriction" when connecting app
+    4. Copy Client ID and Client Secret from ServiceTitan Settings
+  - Uses production endpoint: `https://api.servicetitan.io/crm/v2/tenant/{tenantId}/bookings`
+  - OAuth auth domain: `https://auth.servicetitan.io/connect/token`

@@ -588,6 +588,30 @@ export default function Settings() {
             <p style={{ color: '#718096', marginBottom: '16px', fontSize: '14px' }}>
               Connect ServiceTitan to automatically create Bookings when customers reply to SMS campaigns. This notifies your CSR team that a conversation needs attention.
             </p>
+            <details style={{ marginBottom: '20px', padding: '12px', background: '#f7fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#2d3748' }}>Setup Instructions (click to expand)</summary>
+              <div style={{ marginTop: '12px', fontSize: '13px', color: '#4a5568', lineHeight: '1.7' }}>
+                <p style={{ fontWeight: 600, marginBottom: '8px' }}>Step 1: Developer Portal Setup</p>
+                <ol style={{ marginLeft: '20px', marginBottom: '12px' }}>
+                  <li>Go to <a href="https://developer.servicetitan.io" target="_blank" rel="noopener noreferrer" style={{ color: '#3182ce' }}>developer.servicetitan.io</a> and sign in</li>
+                  <li>Create an app (or use existing) under "My Apps"</li>
+                  <li>Under "API Scopes", enable <strong>CRM &gt; Bookings</strong> (Read + Write)</li>
+                  <li>Copy your <strong>App Key</strong> (starts with <code style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px' }}>ak1.</code>)</li>
+                  <li>Add your Tenant ID under "Tenants"</li>
+                </ol>
+                <p style={{ fontWeight: 600, marginBottom: '8px' }}>Step 2: ServiceTitan Account Setup</p>
+                <ol style={{ marginLeft: '20px', marginBottom: '12px' }}>
+                  <li>In ServiceTitan, go to <strong>Settings → Integrations → Booking Provider Tags</strong></li>
+                  <li>Create a tag (e.g., "IntelliSend-SMS")</li>
+                  <li>Go to <strong>Settings → Integrations → API Application Access</strong></li>
+                  <li>Click <strong>Connect New App</strong> and find your app</li>
+                  <li><span style={{ color: '#c53030', fontWeight: 600 }}>IMPORTANT:</span> Set <strong>"Restriction by Booking Provider"</strong> to <strong>"No Restriction"</strong></li>
+                  <li>Click <strong>Allow Access</strong> and copy your <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+                </ol>
+                <p style={{ fontWeight: 600, marginBottom: '8px' }}>Step 3: Enter Credentials Below</p>
+                <p style={{ marginBottom: '0' }}>Enter the App Key from the Developer Portal, and the Client ID/Secret from ServiceTitan Settings. Then click "Test Connection" to verify everything works.</p>
+              </div>
+            </details>
             <form onSubmit={handleSaveServiceTitan}>
               <div className="form-group" style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
