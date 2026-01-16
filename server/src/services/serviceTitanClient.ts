@@ -166,8 +166,10 @@ export async function createBookingFromInboundSms(
     ].filter(line => line !== null).join('\n');
 
     const bookingPayload = {
+      externalId: options.messageSid,
       source: config.bookingProvider,
       name: `${options.contact.firstName} ${options.contact.lastName}`.trim() || 'Unknown',
+      isFirstTimeClient: true,
       contacts: [
         {
           type: 'MobilePhone',
@@ -179,7 +181,7 @@ export async function createBookingFromInboundSms(
         }] : []),
       ],
       summary: `SMS Reply - ${options.lastInboundMessage.substring(0, 100)}${options.lastInboundMessage.length > 100 ? '...' : ''}`,
-      notes: bookingNotes,
+      body: bookingNotes,
     };
 
     // Use booking-provider/{bookingProviderId}/bookings endpoint under tenant
