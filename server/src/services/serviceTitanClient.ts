@@ -182,7 +182,7 @@ export async function createBookingFromInboundSms(
       notes: bookingNotes,
     };
 
-    const bookingUrl = `${config.tenantApiBaseUrl}/booking/v2/tenant/${config.serviceTitanTenantId}/bookings`;
+    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/bookings`;
     
     const response = await fetch(bookingUrl, {
       method: 'POST',
@@ -308,7 +308,7 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
     }
     details.apiAccess = true;
 
-    const bookingsUrl = `${config.tenantApiBaseUrl}/booking/v2/tenant/${config.serviceTitanTenantId}/booking-provider-tags`;
+    const bookingsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/bookings?page=1&pageSize=1`;
     const bookingsResponse = await fetch(bookingsUrl, {
       method: 'GET',
       headers: {
@@ -321,7 +321,7 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
       if (bookingsResponse.status === 403) {
         return { 
           ok: false, 
-          error: 'Bookings API access denied - ensure "bookings:write" scope is enabled for your app in the ServiceTitan Developer Portal', 
+          error: 'Bookings API access denied - ensure "CRM > Bookings" read/write scope is enabled for your app in the ServiceTitan Developer Portal', 
           details 
         };
       }
