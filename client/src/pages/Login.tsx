@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import logoImage from '../assets/logo.png';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -58,14 +59,15 @@ export default function Login() {
         maxWidth: '400px',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <h1 style={{ 
-            color: '#1e3a5f', 
-            fontSize: '28px', 
-            fontWeight: 'bold',
-            marginBottom: '8px',
-          }}>
-            IntelliSend
-          </h1>
+          <img 
+            src={logoImage} 
+            alt="IntelliSend" 
+            style={{ 
+              maxWidth: '220px', 
+              height: 'auto',
+              marginBottom: '16px',
+            }} 
+          />
           <p style={{ color: '#666', fontSize: '14px' }}>
             {isRegister ? 'Create your account' : 'Sign in to your account'}
           </p>

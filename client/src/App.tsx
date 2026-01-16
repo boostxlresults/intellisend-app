@@ -3,6 +3,7 @@ import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { useTenant } from './context/TenantContext';
 import { useAuth } from './context/AuthContext';
 import { api } from './api/client';
+import logoImage from './assets/logo.png';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
 import ContactDetail from './pages/ContactDetail';
@@ -70,7 +71,9 @@ function App() {
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <h1>IntelliSend</h1>
+        <div style={{ padding: '0 20px', marginBottom: '20px' }}>
+          <img src={logoImage} alt="IntelliSend" style={{ width: '100%', maxWidth: '180px', height: 'auto' }} />
+        </div>
         <nav>
           <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink>
           <NavLink to="/contacts" className={location.pathname.startsWith('/contacts') ? 'active' : ''}>Contacts</NavLink>
