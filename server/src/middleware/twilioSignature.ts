@@ -12,7 +12,7 @@ export async function validateTwilioSignature(req: Request, res: Response, next:
   }
 
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['host'];
+  const host = req.headers['x-forwarded-host'] || req.headers['host'];
   const url = `${protocol}://${host}${req.originalUrl}`;
 
   const toNumber = req.body?.To;
