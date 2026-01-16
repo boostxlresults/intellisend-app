@@ -135,24 +135,25 @@ async function processNextJob(): Promise<void> {
     });
     
     if (result.success && result.bookingId) {
+      const bookingIdStr = String(result.bookingId);
       await prisma.$transaction([
         prisma.serviceTitanBookingJob.update({
           where: { id: jobRecord.id },
           data: {
             status: 'SUCCESS',
-            bookingId: result.bookingId,
+            bookingId: bookingIdStr,
             leaseExpiresAt: null,
           },
         }),
         prisma.conversation.update({
           where: { id: jobRecord.conversationId },
           data: {
-            serviceTitanBookingId: result.bookingId,
+            serviceTitanBookingId: bookingIdStr,
             serviceTitanBookingCreatedAt: new Date(),
           },
         }),
       ]);
-      console.log(`ServiceTitan booking created: ${result.bookingId} for job ${jobRecord.id}`);
+      console.log(`ServiceTitan booking created: ${bookingIdStr} for job ${jobRecord.id}`);
     } else {
       const shouldRetry = result.errorCode !== 'MISSING_SCOPE' && result.errorCode !== 'INVALID_TENANT';
       
