@@ -101,7 +101,7 @@ async function processNextJob(): Promise<void> {
       return;
     }
     
-    const summary = await buildConversationSummary(jobRecord.conversationId, 5, 1000);
+    const summary = await buildConversationSummary(jobRecord.conversationId, 50, 4000);
     
     const campaignMessage = await prisma.message.findFirst({
       where: { 

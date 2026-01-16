@@ -159,20 +159,39 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       data: { needsAttention: true },
     });
     
-    const tenantSettings = await prisma.tenantSettings.findUnique({
-      where: { tenantId },
-    });
+    const [tenantSettings, stConfig] = await Promise.all([
+      prisma.tenantSettings.findUnique({
+        where: { tenantId },
+      }),
+      prisma.serviceTitanConfig.findUnique({
+        where: { tenantId },
+      }),
+    ]);
     
     if (tenantSettings?.notificationEmail) {
+      const conversationMessages = await prisma.message.findMany({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          direction: true,
+          body: true,
+          createdAt: true,
+          fromNumber: true,
+        },
+      });
+      
       const frontendUrl = process.env.FRONTEND_URL || 'https://intellisend.net';
+      const contactName = `${contact.firstName} ${contact.lastName}`.trim() || 'Unknown';
+      
       sendReplyNotification({
         toEmail: tenantSettings.notificationEmail,
         tenantName: tenant.publicName,
-        contactName: `${contact.firstName} ${contact.lastName}`.trim() || 'Unknown',
+        contactName,
         contactPhone: From,
-        message: Body || '',
         conversationId: conversation.id,
         conversationUrl: `${frontendUrl}/conversations/${conversation.id}`,
+        messages: conversationMessages,
+        serviceTitanEnabled: stConfig?.enabled || false,
       }).catch(err => console.error('[Email] Async notification error:', err));
     }
     
