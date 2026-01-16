@@ -248,6 +248,11 @@ export const api = {
       body: JSON.stringify(data),
     }),
   
+  deleteTenantNumber: (tenantId: string, numberId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/numbers/${numberId}`, {
+      method: 'DELETE',
+    }),
+  
   getTenantSettings: (tenantId: string) =>
     request<TenantSettings>(`${API_BASE}/tenants/${tenantId}/settings`),
   

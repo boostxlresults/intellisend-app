@@ -255,4 +255,27 @@ router.post('/:tenantId/numbers', async (req, res) => {
   }
 });
 
+router.delete('/:tenantId/numbers/:numberId', async (req, res) => {
+  try {
+    const { tenantId, numberId } = req.params;
+    
+    const number = await prisma.tenantNumber.findFirst({
+      where: { id: numberId, tenantId },
+    });
+    
+    if (!number) {
+      return res.status(404).json({ error: 'Number not found' });
+    }
+    
+    await prisma.tenantNumber.delete({
+      where: { id: numberId },
+    });
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting tenant number:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

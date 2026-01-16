@@ -430,6 +430,7 @@ export default function Settings() {
                     <th>Phone Number</th>
                     <th>Label</th>
                     <th>Default</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -438,6 +439,24 @@ export default function Settings() {
                       <td>{num.phoneNumber}</td>
                       <td>{num.label || '-'}</td>
                       <td>{num.isDefault ? 'Yes' : 'No'}</td>
+                      <td>
+                        <button
+                          className="btn btn-small"
+                          style={{ background: '#e53e3e', color: 'white', padding: '4px 8px', fontSize: '12px' }}
+                          onClick={async () => {
+                            if (!selectedTenant) return;
+                            if (!confirm(`Delete ${num.phoneNumber}?`)) return;
+                            try {
+                              await api.deleteTenantNumber(selectedTenant.id, num.id);
+                              fetchData();
+                            } catch (err) {
+                              alert('Failed to delete number');
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
