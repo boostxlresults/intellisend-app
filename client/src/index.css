@@ -18,9 +18,10 @@ body {
 
 .sidebar {
   width: 220px;
-  background: #1F2937;
-  color: white;
+  background: #F8FAFC;
+  color: #1F2937;
   padding: 20px 0;
+  border-right: 1px solid #E2E8F0;
 }
 
 .sidebar h1 {
@@ -33,15 +34,16 @@ body {
 .sidebar nav a {
   display: block;
   padding: 12px 20px;
-  color: #a0aec0;
+  color: #475569;
   text-decoration: none;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
 .sidebar nav a:hover,
 .sidebar nav a.active {
-  background: #374151;
-  color: white;
+  background: #E2E8F0;
+  color: #1E293B;
 }
 
 .main-content {
