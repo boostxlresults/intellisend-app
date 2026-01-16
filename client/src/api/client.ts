@@ -587,6 +587,17 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  updateTemplate: (tenantId: string, templateId: string, data: { name: string; category?: string; bodyTemplate: string; mediaUrl?: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/templates/${templateId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteTemplate: (tenantId: string, templateId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/templates/${templateId}`, {
+      method: 'DELETE',
+    }),
+
   seedSystemTemplates: () =>
     request<{ message: string; count: number }>(`${API_BASE}/templates/seed`, { method: 'POST' }),
 

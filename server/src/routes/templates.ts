@@ -4,71 +4,276 @@ import { prisma } from '../index';
 const router = express.Router();
 
 const SYSTEM_TEMPLATES = [
+  // ============================================
+  // HVAC Templates
+  // ============================================
   {
-    name: 'Appointment Reminder - 24hr',
-    category: 'APPOINTMENT_REMINDER',
-    bodyTemplate: "Hi {{firstName}}, this is a reminder about your appointment tomorrow at {{appointmentTime}}. Reply CONFIRM to confirm or call us to reschedule.",
-    variables: JSON.stringify(['firstName', 'appointmentTime']),
+    name: 'HVAC - Neighborhood Special',
+    category: 'HVAC',
+    bodyTemplate: "Hey! This is {{agentName}} from {{companyName}}. We're finishing a job in your area and wanted to offer you a tune-up for only ${{price}}. Reply YES for details!",
+    variables: JSON.stringify(['agentName', 'companyName', 'price']),
   },
   {
-    name: 'Appointment Reminder - 1hr',
-    category: 'APPOINTMENT_REMINDER',
-    bodyTemplate: "Hi {{firstName}}, just a heads up - we'll be there in about an hour for your {{serviceType}} appointment. See you soon!",
-    variables: JSON.stringify(['firstName', 'serviceType']),
+    name: 'HVAC - Seasonal Tune-Up',
+    category: 'HVAC',
+    bodyTemplate: "Hi {{firstName}}! {{companyName}} here. Time for your {{season}} HVAC tune-up! Keep your system running efficiently. Reply YES to schedule.",
+    variables: JSON.stringify(['firstName', 'companyName', 'season']),
   },
   {
-    name: 'Review Request',
-    category: 'REVIEW_REQUEST',
-    bodyTemplate: "Hi {{firstName}}, thank you for choosing {{companyName}}! We'd love your feedback. Please leave us a quick review: {{reviewLink}}",
-    variables: JSON.stringify(['firstName', 'companyName', 'reviewLink']),
-  },
-  {
-    name: 'Seasonal HVAC Tune-Up',
-    category: 'SEASONAL_PROMO',
-    bodyTemplate: "{{firstName}}, it's that time of year! Schedule your seasonal HVAC tune-up and save {{discount}}%. Book now: {{bookingLink}}",
-    variables: JSON.stringify(['firstName', 'discount', 'bookingLink']),
-  },
-  {
-    name: 'Winter Prep Special',
-    category: 'SEASONAL_PROMO',
-    bodyTemplate: "Get your home winter-ready! {{companyName}} is offering {{discount}}% off heating system inspections. Limited time offer. Reply YES to book.",
-    variables: JSON.stringify(['companyName', 'discount']),
-  },
-  {
-    name: 'Re-Engagement - 30 Days',
-    category: 'RE_ENGAGEMENT',
-    bodyTemplate: "Hi {{firstName}}, we miss you! It's been a while since your last service. Book now and get {{discount}}% off your next visit.",
-    variables: JSON.stringify(['firstName', 'discount']),
-  },
-  {
-    name: 'Re-Engagement - 90 Days',
-    category: 'RE_ENGAGEMENT',
-    bodyTemplate: "{{firstName}}, it's been 3 months! Time for a check-up? We're offering a special deal just for you. Reply for details.",
+    name: 'HVAC - Filter Reminder',
+    category: 'HVAC',
+    bodyTemplate: "{{firstName}}, it's been 90 days since we serviced your HVAC. Time to change your filter! Need help? Reply YES and we'll take care of it.",
     variables: JSON.stringify(['firstName']),
   },
   {
-    name: 'Welcome New Customer',
-    category: 'WELCOME',
-    bodyTemplate: "Welcome to {{companyName}}, {{firstName}}! We're excited to serve you. Save this number - text us anytime with questions.",
-    variables: JSON.stringify(['companyName', 'firstName']),
+    name: 'HVAC - Emergency Check',
+    category: 'HVAC',
+    bodyTemplate: "Hi {{firstName}}! With {{weather}} temps coming, is your AC/heat ready? {{companyName}} offers 24/7 emergency service. Reply to schedule a checkup!",
+    variables: JSON.stringify(['firstName', 'weather', 'companyName']),
   },
   {
-    name: 'Service Confirmation',
-    category: 'CONFIRMATION',
-    bodyTemplate: '{{firstName}}, your {{serviceType}} is confirmed for {{appointmentDate}} at {{appointmentTime}}. Our tech {{techName}} will be there.',
-    variables: JSON.stringify(['firstName', 'serviceType', 'appointmentDate', 'appointmentTime', 'techName']),
+    name: 'HVAC - Membership Offer',
+    category: 'HVAC',
+    bodyTemplate: "{{firstName}}, join our maintenance club! 2 tune-ups/year, priority service, and {{discount}}% off repairs. Only ${{price}}/mo. Reply for info!",
+    variables: JSON.stringify(['firstName', 'discount', 'price']),
+  },
+
+  // ============================================
+  // Plumbing Templates
+  // ============================================
+  {
+    name: 'Plumbing - Water Heater Check',
+    category: 'PLUMBING',
+    bodyTemplate: "Hi {{firstName}}! When's the last time you had your water heater checked? {{companyName}} offers free inspections this month. Reply YES to book!",
+    variables: JSON.stringify(['firstName', 'companyName']),
   },
   {
-    name: 'Follow-Up After Service',
-    category: 'FOLLOW_UP',
-    bodyTemplate: 'Hi {{firstName}}, thanks for choosing us today! How was your experience? Reply with any questions or concerns.',
-    variables: JSON.stringify(['firstName']),
+    name: 'Plumbing - Drain Cleaning Special',
+    category: 'PLUMBING',
+    bodyTemplate: "{{firstName}}, slow drains? {{companyName}} drain cleaning special: ${{price}}! Clear any drain in your home. Reply YES to schedule.",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
   },
   {
-    name: 'Invoice Reminder',
-    category: 'FOLLOW_UP',
-    bodyTemplate: 'Hi {{firstName}}, just a friendly reminder about your invoice of ${{amount}}. Pay online: {{paymentLink}} or reply with questions.',
-    variables: JSON.stringify(['firstName', 'amount', 'paymentLink']),
+    name: 'Plumbing - Leak Detection',
+    category: 'PLUMBING',
+    bodyTemplate: "Hey {{firstName}}! Did you know a small leak can waste 10,000 gallons/year? {{companyName}} offers free leak inspections. Text YES to schedule!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Plumbing - Winter Prep',
+    category: 'PLUMBING',
+    bodyTemplate: "{{firstName}}, freezing temps are coming! Protect your pipes with our winterization service for ${{price}}. Reply YES to schedule. - {{companyName}}",
+    variables: JSON.stringify(['firstName', 'price', 'companyName']),
+  },
+  {
+    name: 'Plumbing - Emergency Service',
+    category: 'PLUMBING',
+    bodyTemplate: "Hi {{firstName}}! {{companyName}} here. Just a reminder - we offer 24/7 emergency plumbing. Save this number! Any issues? Reply anytime.",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+
+  // ============================================
+  // Electrical Templates
+  // ============================================
+  {
+    name: 'Electrical - Safety Inspection',
+    category: 'ELECTRICAL',
+    bodyTemplate: "{{firstName}}, is your home's electrical system up to code? {{companyName}} offers safety inspections for ${{price}}. Reply YES to book!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Electrical - Panel Upgrade',
+    category: 'ELECTRICAL',
+    bodyTemplate: "Hi {{firstName}}! Older electrical panel? Upgrade for safety and add capacity for modern appliances. {{companyName}} - Reply for a free quote!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Electrical - Generator Special',
+    category: 'ELECTRICAL',
+    bodyTemplate: "{{firstName}}, never lose power again! {{companyName}} generator installations starting at ${{price}}. Storm season is here. Reply YES for info!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Electrical - Smart Home',
+    category: 'ELECTRICAL',
+    bodyTemplate: "Hey {{firstName}}! Ready to upgrade to a smart home? {{companyName}} installs smart switches, outlets & more. Reply YES for a free estimate!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Electrical - EV Charger',
+    category: 'ELECTRICAL',
+    bodyTemplate: "{{firstName}}, got an EV or thinking about one? {{companyName}} installs home chargers! Level 2 charging from ${{price}}. Reply for details!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+
+  // ============================================
+  // Solar Templates
+  // ============================================
+  {
+    name: 'Solar - Free Savings Analysis',
+    category: 'SOLAR',
+    bodyTemplate: "Hi {{firstName}}! Curious how much you could save with solar? {{companyName}} offers free savings analyses. Reply YES and we'll run your numbers!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Solar - Tax Credit Reminder',
+    category: 'SOLAR',
+    bodyTemplate: "{{firstName}}, the 30% federal solar tax credit won't last forever! Lock in your savings with {{companyName}}. Reply YES for a free quote!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Solar - Panel Cleaning',
+    category: 'SOLAR',
+    bodyTemplate: "Hey {{firstName}}! Dirty panels = less power. {{companyName}} panel cleaning for ${{price}} keeps your system at peak efficiency. Reply YES to book!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Solar - Battery Backup',
+    category: 'SOLAR',
+    bodyTemplate: "{{firstName}}, add battery backup to your solar! Keep the lights on during outages. {{companyName}} installs all major brands. Reply for info!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Solar - Referral Bonus',
+    category: 'SOLAR',
+    bodyTemplate: "{{firstName}}, love your solar? Refer a friend and get ${{amount}}! They save, you earn. Just reply with their name and number. - {{companyName}}",
+    variables: JSON.stringify(['firstName', 'amount', 'companyName']),
+  },
+
+  // ============================================
+  // Roofing Templates
+  // ============================================
+  {
+    name: 'Roofing - Storm Damage Check',
+    category: 'ROOFING',
+    bodyTemplate: "Hi {{firstName}}! After recent storms, {{companyName}} is offering free roof inspections in your area. Reply YES to schedule yours!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Roofing - Gutter Cleaning',
+    category: 'ROOFING',
+    bodyTemplate: "{{firstName}}, clogged gutters cause roof damage! {{companyName}} gutter cleaning for ${{price}}. Protect your home. Reply YES to schedule!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Roofing - Free Inspection',
+    category: 'ROOFING',
+    bodyTemplate: "Hey {{firstName}}! When's the last time you had your roof inspected? {{companyName}} offers free inspections. Reply YES to book yours!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Roofing - Financing Available',
+    category: 'ROOFING',
+    bodyTemplate: "{{firstName}}, need a new roof? {{companyName}} offers 0% financing for {{months}} months! Get a free estimate - reply YES to get started!",
+    variables: JSON.stringify(['firstName', 'companyName', 'months']),
+  },
+  {
+    name: 'Roofing - Insurance Claims Help',
+    category: 'ROOFING',
+    bodyTemplate: "Hi {{firstName}}! Storm damage? {{companyName}} works directly with insurance companies. Free inspection + claim assistance. Reply YES for help!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+
+  // ============================================
+  // Landscaping Templates
+  // ============================================
+  {
+    name: 'Landscaping - Spring Cleanup',
+    category: 'LANDSCAPING',
+    bodyTemplate: "{{firstName}}, spring is here! {{companyName}} offers yard cleanups starting at ${{price}}. Mulch, pruning, and more! Reply YES to schedule!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Landscaping - Lawn Care Plan',
+    category: 'LANDSCAPING',
+    bodyTemplate: "Hi {{firstName}}! Want a lush, green lawn? {{companyName}} seasonal lawn plans from ${{price}}/mo. Reply YES for a free yard assessment!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Landscaping - Irrigation Check',
+    category: 'LANDSCAPING',
+    bodyTemplate: "{{firstName}}, is your sprinkler system ready for summer? {{companyName}} irrigation tune-ups for ${{price}}. Reply YES to schedule!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Landscaping - Fall Leaf Removal',
+    category: 'LANDSCAPING',
+    bodyTemplate: "Hey {{firstName}}! Leaves piling up? {{companyName}} leaf removal starting at ${{price}}. Protect your lawn this fall. Reply YES to book!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Landscaping - Holiday Lights',
+    category: 'LANDSCAPING',
+    bodyTemplate: "{{firstName}}, skip the ladder! {{companyName}} installs holiday lights. Professional setup + takedown for ${{price}}. Reply YES for details!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+
+  // ============================================
+  // Pest Control Templates
+  // ============================================
+  {
+    name: 'Pest Control - Quarterly Treatment',
+    category: 'PEST_CONTROL',
+    bodyTemplate: "Hi {{firstName}}! Time for your quarterly pest treatment. {{companyName}} keeps bugs out year-round. Reply YES to schedule your visit!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Pest Control - New Neighbor Special',
+    category: 'PEST_CONTROL',
+    bodyTemplate: "{{firstName}}, welcome to the neighborhood! {{companyName}} offers first-time customers {{discount}}% off. Keep pests out! Reply YES for details.",
+    variables: JSON.stringify(['firstName', 'companyName', 'discount']),
+  },
+  {
+    name: 'Pest Control - Termite Inspection',
+    category: 'PEST_CONTROL',
+    bodyTemplate: "Hey {{firstName}}! Termites cause $5B in damage annually. {{companyName}} offers free termite inspections. Protect your home - reply YES!",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'Pest Control - Mosquito Season',
+    category: 'PEST_CONTROL',
+    bodyTemplate: "{{firstName}}, mosquito season is here! {{companyName}} yard treatments starting at ${{price}}. Enjoy your backyard again. Reply YES to book!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+  {
+    name: 'Pest Control - Rodent Prevention',
+    category: 'PEST_CONTROL',
+    bodyTemplate: "Hi {{firstName}}! As temps drop, rodents look for shelter. {{companyName}} rodent prevention from ${{price}}. Don't wait - reply YES to schedule!",
+    variables: JSON.stringify(['firstName', 'companyName', 'price']),
+  },
+
+  // ============================================
+  // Public Service Announcements
+  // ============================================
+  {
+    name: 'PSA - Freeze Warning',
+    category: 'PSA',
+    bodyTemplate: "{{firstName}}, freeze warning tonight! Drip faucets, open cabinet doors, and disconnect hoses. Questions? Reply anytime. - {{companyName}}",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'PSA - Storm Prep Tips',
+    category: 'PSA',
+    bodyTemplate: "{{firstName}}, storms forecasted! Secure outdoor items, check gutters, and know your shutoff valves. Stay safe! - {{companyName}}",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'PSA - Change Your Filters',
+    category: 'PSA',
+    bodyTemplate: "Pro tip: Change HVAC filters every 90 days for better air quality and lower bills! Need help? Reply YES. - {{companyName}}",
+    variables: JSON.stringify(['companyName']),
+  },
+  {
+    name: 'PSA - Test Smoke Detectors',
+    category: 'PSA',
+    bodyTemplate: "Safety reminder: Test smoke & CO detectors monthly, replace batteries twice yearly. Stay safe, {{firstName}}! - {{companyName}}",
+    variables: JSON.stringify(['firstName', 'companyName']),
+  },
+  {
+    name: 'PSA - Water Heater Life',
+    category: 'PSA',
+    bodyTemplate: "Did you know? Water heaters last 8-12 years. If yours is older, it may be time for an upgrade. Questions? Reply anytime! - {{companyName}}",
+    variables: JSON.stringify(['companyName']),
   },
 ];
 
