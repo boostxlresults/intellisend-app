@@ -180,7 +180,9 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         },
       });
       
-      const frontendUrl = process.env.FRONTEND_URL || 'https://intellisend.net';
+      const frontendUrl = process.env.FRONTEND_URL 
+        || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+        || 'https://intellisend.net';
       const contactName = `${contact.firstName} ${contact.lastName}`.trim() || 'Unknown';
       
       sendReplyNotification({

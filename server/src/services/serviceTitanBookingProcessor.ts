@@ -102,6 +102,7 @@ async function processNextJob(): Promise<void> {
     }
     
     const summary = await buildConversationSummary(jobRecord.conversationId, 50, 4000);
+    console.log(`[ServiceTitan] Conversation summary for ${jobRecord.conversationId}: ${summary.length} chars, preview: ${summary.substring(0, 100)}...`);
     
     const campaignMessage = await prisma.message.findFirst({
       where: { 
@@ -112,9 +113,8 @@ async function processNextJob(): Promise<void> {
       orderBy: { createdAt: 'desc' },
     });
     
-    const frontendUrl = process.env.FRONTEND_URL || process.env.REPLIT_DEV_DOMAIN 
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
-      : null;
+    const frontendUrl = process.env.FRONTEND_URL 
+      || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null);
     
     const result = await createBookingFromInboundSms({
       tenantId: jobRecord.tenantId,

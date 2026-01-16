@@ -188,7 +188,7 @@ export async function createBookingFromInboundSms(
           value: options.contact.email,
         }] : []),
       ],
-      summary: `SMS Reply - ${options.lastInboundMessage.substring(0, 100)}${options.lastInboundMessage.length > 100 ? '...' : ''}`,
+      summary: `SMS Reply - ${options.lastInboundMessage.substring(0, 80)}${options.lastInboundMessage.length > 80 ? '...' : ''} [Full chat in notes]`,
       body: bookingNotes,
     };
 
