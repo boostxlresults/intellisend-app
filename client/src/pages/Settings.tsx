@@ -47,6 +47,7 @@ export default function Settings() {
     clientId: '',
     clientSecret: '',
     bookingProvider: 'IntelliSend-SMS',
+    bookingProviderId: '',
     enabled: false,
   });
 
@@ -80,6 +81,7 @@ export default function Settings() {
           clientId: stConfigData.clientId || '',
           clientSecret: '',
           bookingProvider: stConfigData.bookingProvider || 'IntelliSend-SMS',
+          bookingProviderId: stConfigData.bookingProviderId || '',
           enabled: stConfigData.enabled || false,
         });
       }
@@ -257,6 +259,7 @@ export default function Settings() {
         clientId: stForm.clientId,
         clientSecret: stForm.clientSecret || undefined,
         bookingProvider: stForm.bookingProvider,
+        bookingProviderId: stForm.bookingProviderId || undefined,
         enabled: stForm.enabled,
       });
       setStConfig(savedConfig);
@@ -686,17 +689,31 @@ export default function Settings() {
                 </div>
               </div>
               
-              <div className="form-group">
-                <label>Booking Provider Name</label>
-                <input
-                  type="text"
-                  value={stForm.bookingProvider}
-                  onChange={(e) => setStForm(prev => ({ ...prev, bookingProvider: e.target.value }))}
-                  placeholder="IntelliSend-SMS"
-                />
-                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
-                  Tag name for bookings created by IntelliSend (appears in ST booking source)
-                </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-group">
+                  <label>Booking Provider Name</label>
+                  <input
+                    type="text"
+                    value={stForm.bookingProvider}
+                    onChange={(e) => setStForm(prev => ({ ...prev, bookingProvider: e.target.value }))}
+                    placeholder="IntelliSend-SMS"
+                  />
+                  <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                    Tag name for bookings (appears in ST booking source)
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label>Booking Provider ID <span style={{ color: '#e53e3e' }}>*</span></label>
+                  <input
+                    type="text"
+                    value={stForm.bookingProviderId}
+                    onChange={(e) => setStForm(prev => ({ ...prev, bookingProviderId: e.target.value }))}
+                    placeholder="210453508"
+                  />
+                  <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                    Numeric ID from Settings → Booking Provider Tags
+                  </p>
+                </div>
               </div>
               
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>

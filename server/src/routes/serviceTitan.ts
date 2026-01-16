@@ -24,6 +24,7 @@ router.get('/:tenantId/servicetitan-config', async (req, res) => {
       appKey: config.appKey,
       clientId: config.clientId,
       bookingProvider: config.bookingProvider,
+      bookingProviderId: config.bookingProviderId,
       enabled: config.enabled,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
@@ -79,6 +80,7 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
       clientId: clientId || existing?.clientId || '',
       clientSecret: newSecret,
       bookingProvider: bookingProvider || existing?.bookingProvider || 'IntelliSend-SMS',
+      bookingProviderId: req.body.bookingProviderId || existing?.bookingProviderId || null,
       enabled: enabled ?? existing?.enabled ?? false,
     };
     
@@ -99,6 +101,7 @@ router.post('/:tenantId/servicetitan-config', async (req, res) => {
       appKey: config.appKey,
       clientId: config.clientId,
       bookingProvider: config.bookingProvider,
+      bookingProviderId: config.bookingProviderId,
       enabled: config.enabled,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,

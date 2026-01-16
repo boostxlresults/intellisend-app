@@ -182,10 +182,17 @@ export async function createBookingFromInboundSms(
       notes: bookingNotes,
     };
 
-    // Use booking-provider endpoint, not tenant endpoint (POST is only available on booking-provider route)
-    // The booking provider tag is configured in IntelliSend settings (e.g., "IntelliSend-SMS")
-    const bookingProviderTag = encodeURIComponent(config.bookingProvider);
-    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/booking-provider/${bookingProviderTag}/bookings`;
+    // Use booking-providers endpoint (plural) with numeric ID, not tenant endpoint
+    // POST is only available on the booking-providers route with the numeric provider ID
+    if (!config.bookingProviderId) {
+      console.error(`[ServiceTitan] Missing bookingProviderId for tenant ${options.tenantId}`);
+      return {
+        success: false,
+        error: 'Booking Provider ID not configured. Please add the numeric ID from ServiceTitan Booking Provider Tags.',
+        errorCode: 'API_ERROR'
+      };
+    }
+    const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/booking-providers/${config.bookingProviderId}/bookings`;
     
     console.log(`[ServiceTitan] Creating booking at: ${bookingUrl}`);
     console.log(`[ServiceTitan] Using App Key: ${config.appKey.substring(0, 10)}...`);

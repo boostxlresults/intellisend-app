@@ -718,6 +718,7 @@ model ServiceTitanConfig {
   clientId             String   // Client ID from ServiceTitan tenant
   clientSecret         String   // Client Secret from ServiceTitan tenant
   bookingProvider      String   @default("IntelliSend-SMS")
+  bookingProviderId    String?  // Numeric ID from ServiceTitan Booking Provider Tags
   enabled              Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

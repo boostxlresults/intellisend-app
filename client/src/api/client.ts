@@ -68,6 +68,7 @@ export interface ServiceTitanConfig {
   appKey: string;
   clientId: string;
   bookingProvider: string;
+  bookingProviderId: string | null;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -643,6 +644,7 @@ export const api = {
     clientId: string;
     clientSecret?: string;
     bookingProvider: string;
+    bookingProviderId?: string;
     enabled: boolean;
   }) =>
     request<ServiceTitanConfig>(`${API_BASE}/tenants/${tenantId}/servicetitan-config`, {
