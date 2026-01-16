@@ -224,3 +224,10 @@ The application runs with two servers:
     4. Copy Client ID and Client Secret from ServiceTitan Settings
   - Uses production endpoint: `https://api.servicetitan.io/crm/v2/tenant/{tenantId}/bookings`
   - OAuth auth domain: `https://auth.servicetitan.io/connect/token`
+- **Email Notifications for Customer Replies**:
+  - Resend integration for sending email alerts (from alerts@mail.intellisend.net)
+  - notificationEmail field in TenantSettings for configuring per-tenant email recipients
+  - Automatic email notification when customers reply to SMS (excluding opt-outs)
+  - Email includes contact name, phone, message content, and link to conversation
+  - Settings UI for configuring notification email address
+  - Async non-blocking email sending to not delay webhook responses
