@@ -118,6 +118,7 @@ async function processNextJob(): Promise<void> {
     
     const result = await createBookingFromInboundSms({
       tenantId: jobRecord.tenantId,
+      messageSid: jobRecord.messageSid,
       contact: {
         id: contact.id,
         firstName: contact.firstName,
