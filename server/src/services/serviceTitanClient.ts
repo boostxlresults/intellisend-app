@@ -184,6 +184,10 @@ export async function createBookingFromInboundSms(
 
     const bookingUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/bookings`;
     
+    console.log(`[ServiceTitan] Creating booking at: ${bookingUrl}`);
+    console.log(`[ServiceTitan] Using App Key: ${config.appKey.substring(0, 10)}...`);
+    console.log(`[ServiceTitan] Payload:`, JSON.stringify(bookingPayload, null, 2));
+    
     const response = await fetch(bookingUrl, {
       method: 'POST',
       headers: {
