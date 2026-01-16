@@ -47,6 +47,7 @@ model TenantSettings {
   sendRatePerMinute   Int      @default(30)
   sendJitterMinMs     Int      @default(1000)
   sendJitterMaxMs     Int      @default(5000)
+  notificationEmail   String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
