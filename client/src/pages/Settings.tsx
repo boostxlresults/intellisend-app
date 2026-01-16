@@ -110,6 +110,7 @@ export default function Settings() {
         sendRatePerMinute: parseInt(formData.get('sendRatePerMinute') as string) || 30,
         sendJitterMinMs: parseInt(formData.get('sendJitterMinMs') as string) || 1000,
         sendJitterMaxMs: parseInt(formData.get('sendJitterMaxMs') as string) || 5000,
+        notificationEmail: formData.get('notificationEmail') as string || null,
       });
       const refreshedSettings = await api.getTenantSettings(selectedTenant.id);
       setTenantSettings(refreshedSettings);
@@ -395,6 +396,20 @@ export default function Settings() {
               <p style={{ fontSize: '12px', color: '#718096', marginBottom: '16px' }}>
                 Controls message spacing to avoid carrier spam detection. Jitter adds random delay between messages. Default: 30 messages/minute with 1-5 second random spacing.
               </p>
+              
+              <div className="form-group">
+                <label>Notification Email</label>
+                <input 
+                  type="email" 
+                  name="notificationEmail" 
+                  defaultValue={tenantSettings?.notificationEmail || ''}
+                  placeholder="Enter email to receive SMS reply notifications"
+                  style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }}
+                />
+                <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                  Receive email alerts when customers reply to SMS messages (excluding opt-outs).
+                </p>
+              </div>
               
               <div className="form-group">
                 <label>Default From Number</label>

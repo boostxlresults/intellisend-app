@@ -3,6 +3,7 @@ import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
 import { isStopKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
+import { sendReplyNotification } from '../services/emailNotifications';
 
 const router = Router();
 
@@ -157,6 +158,23 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       where: { id: conversation.id },
       data: { needsAttention: true },
     });
+    
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+    });
+    
+    if (tenantSettings?.notificationEmail) {
+      const frontendUrl = process.env.FRONTEND_URL || 'https://intellisend.net';
+      sendReplyNotification({
+        toEmail: tenantSettings.notificationEmail,
+        tenantName: tenant.publicName,
+        contactName: `${contact.firstName} ${contact.lastName}`.trim() || 'Unknown',
+        contactPhone: From,
+        message: Body || '',
+        conversationId: conversation.id,
+        conversationUrl: `${frontendUrl}/conversations/${conversation.id}`,
+      }).catch(err => console.error('[Email] Async notification error:', err));
+    }
     
     const inboundMessageSid = MessageSid || '';
     

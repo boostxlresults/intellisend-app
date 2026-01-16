@@ -125,6 +125,7 @@ router.post('/:tenantId/settings', async (req, res) => {
       sendRatePerMinute,
       sendJitterMinMs,
       sendJitterMaxMs,
+      notificationEmail,
     } = req.body;
     
     const updateData: any = {};
@@ -180,6 +181,10 @@ router.post('/:tenantId/settings', async (req, res) => {
       updateData.sendJitterMaxMs = newMaxMs;
     }
     
+    if (notificationEmail !== undefined) {
+      updateData.notificationEmail = notificationEmail || null;
+    }
+    
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
       create: {
@@ -191,6 +196,7 @@ router.post('/:tenantId/settings', async (req, res) => {
         sendRatePerMinute: updateData.sendRatePerMinute ?? 30,
         sendJitterMinMs: updateData.sendJitterMinMs ?? 1000,
         sendJitterMaxMs: updateData.sendJitterMaxMs ?? 5000,
+        notificationEmail: updateData.notificationEmail,
       },
       update: updateData,
       include: { defaultFromNumber: true },

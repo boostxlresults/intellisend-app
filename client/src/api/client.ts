@@ -153,6 +153,7 @@ export interface TenantSettings {
   sendRatePerMinute: number;
   sendJitterMinMs: number;
   sendJitterMaxMs: number;
+  notificationEmail?: string | null;
 }
 
 export interface Tag {
