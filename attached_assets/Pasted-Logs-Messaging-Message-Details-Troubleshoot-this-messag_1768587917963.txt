@@ -1,0 +1,290 @@
+Logs
+/
+Messaging
+Message Details
+
+Troubleshoot this message
+Properties
+Message SID
+SM50d1a57549e3e6dd7376ddae1057c4ad
+
+Messaging Service
+Intelligent Design Customer Care
+
+Created At
+10:22:12 PST 2026-01-16
+
+Message Segments
+1
+
+From
+(US) +1 6022147644
+
+Cost
+
+$0
+
+Shortened link enabled
+
+No
+
+Direction
+Incoming
+
+API Endpoint
+/2010-04-01/Accounts/{AccountSid}/SMS/Messages
+
+Scheduled For
+-
+
+Encoding
+
+NOT AVAILABLE
+
+To
+(US) +1 5203958632
+
+Region
+United States (US1)
+
+Shortened link first clicked
+-
+
+Body
+Test reply
+Delivery Steps
+Stage
+
+Step
+
+Timestamp
+Elapsed time
+Twilio Platform	Message Created	10:22:12 PST 2026-01-16	—
+Enqueued	10:22:12 PST 2026-01-16	—
+TwiML Fetch Succeeded:	10:22:12 PST 2026-01-16	0.18 sec
+Message Received	10:22:12 PST 2026-01-16	0.18 sec
+Errors and Warnings
+Notification SID
+NOa5beb3505afe836089755256d5b1258d
+Warning
+11200 Twilio’s servers were unable to fetch a non-error response from the designated URL.
+ 
+Troubleshoot
+Description
+Twilio’s servers were unable to fetch a non-error response from the designated URL.
+Warning
+11200 Twilio’s servers were unable to fetch a non-error response from the designated URL.
+ 
+Troubleshoot
+Description
+Twilio’s servers were unable to fetch a non-error response from the designated URL.
+Request Inspector
+URL
+
+https://48fede8f-6fa3-4df6-9ca6-e8eb9a2dd351-00-3eg95pvdjop9w.worf.replit.dev/webhooks/twilio/inbound
+
+Product
+
+Programmable SMS
+
+Timestamp
+
+2026-01-16 18:22:12
+
+HTTP status
+
+403
+
+Post
+
+Collapse All
+
+Replay request
+
+Clear
+Request
+URL
+https://48fede8f-6fa3-4df6-9ca6-e8eb9a2dd351-00-3eg95pvdjop9w.worf.replit.dev/webhooks/twilio/inbound
+
+Parameters
+
+Show raw data
+ToCountry
+
+US
+
+ToState
+
+AZ
+
+SmsMessageSid
+
+SM50d1a57549e3e6dd7376ddae1057c4ad
+
+NumMedia
+
+0
+
+ToCity
+
+TUCSON
+
+FromZip
+
+85260
+
+SmsSid
+
+SM50d1a57549e3e6dd7376ddae1057c4ad
+
+FromState
+
+AZ
+
+SmsStatus
+
+received
+
+FromCity
+
+PHOENIX
+
+Body
+
+Test reply
+
+FromCountry
+
+US
+
+To
+
++15203958632
+
+MessagingServiceSid
+
+MG807ed2ec3d3df0bb9fd71bd443c9859a
+
+ToZip
+
+85743
+
+NumSegments
+
+1
+
+MessageSid
+
+SM50d1a57549e3e6dd7376ddae1057c4ad
+
+AccountSid
+
+ACae279530cedf98b2e6c891f2803ba435
+
+From
+
++16022147644
+
+ApiVersion
+
+2010-04-01
+
+Message text
+
+Show raw data
+sourceComponent
+
+14100
+
+httpResponse
+
+403
+
+url
+
+https://48fede8f-6fa3-4df6-9ca6-e8eb9a2dd351-00-3eg95pvdjop9w.worf.replit.dev/webhooks/twilio/inbound
+
+ErrorCode
+
+11200
+
+LogLevel
+
+ERROR
+
+Msg
+
+Forbidden
+
+EmailNotification
+
+false
+
+Response
+Headers
+etag
+
+W/"2f-eCUtOcxxjUR+yAXQ+XyX3H7gl24"
+
+server
+
+envoy
+
+replit-cluster
+
+worf
+
+x-twilio-webhookinsights
+
+req_sent_at=1768587732729,resp_rcv_at=1768587732806
+
+x-envoy-upstream-service-time
+
+103
+
+content-length
+
+47
+
+x-twilio-webhookattempt
+
+1
+
+access-control-allow-credentials
+
+true
+
+x-robots-tag
+
+none, noindex, noarchive, nofollow, nositelinkssearchbox, noimageindex
+
+x-robots-tag
+
+none, noindex, noarchive, nofollow, nositelinkssearchbox, noimageindex
+
+date
+
+Fri, 16 Jan 2026 18:22:12 GMT
+
+content-type
+
+application/json; charset=utf-8
+
+x-powered-by
+
+Express
+
+vary
+
+Origin
+
+x-twilio-webhookretriable
+
+false
+
+Body
+
+Show raw data
+
+Copy response body
+{"error":"Forbidden: Invalid Twilio signature"}

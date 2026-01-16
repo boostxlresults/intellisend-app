@@ -11,6 +11,16 @@ export async function validateTwilioSignature(req: Request, res: Response, next:
     return res.status(403).json({ error: 'Forbidden: Missing Twilio signature' });
   }
 
+  // Debug: log all relevant headers
+  console.log('Twilio webhook headers:', {
+    'host': req.headers['host'],
+    'x-forwarded-host': req.headers['x-forwarded-host'],
+    'x-forwarded-proto': req.headers['x-forwarded-proto'],
+    'x-replit-cluster': req.headers['x-replit-cluster'],
+    'origin': req.headers['origin'],
+    'referer': req.headers['referer'],
+  });
+
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.headers['host'];
   const url = `${protocol}://${host}${req.originalUrl}`;
