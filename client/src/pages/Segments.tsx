@@ -69,7 +69,7 @@ export default function Segments() {
     
     if (selectionMode === 'tags' && selectedTags.size > 0) {
       result = contacts.filter(contact => 
-        contact.tags?.some(t => selectedTags.has(t.tag?.name || ''))
+        contact.tags?.some(t => selectedTags.has(t.name))
       );
     }
     
@@ -95,7 +95,7 @@ export default function Segments() {
     
     if (selectionMode === 'tags') {
       const matchingContacts = contacts.filter(c => 
-        c.tags?.some(t => newTags.has(t.tag?.name || ''))
+        c.tags?.some(t => newTags.has(t.name))
       );
       setSelectedContacts(new Set(matchingContacts.map(c => c.id)));
     }
@@ -334,7 +334,7 @@ export default function Segments() {
                               borderRadius: '10px',
                               color: '#4a5568',
                             }}>
-                              {t.tag?.name || 'Unknown'}
+                              {t.name}
                             </span>
                           ))}
                           {contact.tags.length > 3 && (

@@ -43,14 +43,8 @@ export interface Contact {
 
 export interface ContactTag {
   id: string;
-  contactId: string;
-  tagId: string;
-  tag: {
-    id: string;
-    name: string;
-    tenantId: string;
-    color?: string;
-  };
+  name: string;
+  color?: string | null;
 }
 
 export interface Conversation {
