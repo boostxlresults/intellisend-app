@@ -12,16 +12,25 @@ interface ComplianceChecklist {
   notes: string;
 }
 
+interface Template {
+  id: string;
+  name: string;
+  category: string;
+  bodyTemplate: string;
+}
+
 export default function Campaigns() {
   const { selectedTenant } = useTenant();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [campaignName, setCampaignName] = useState('');
   const [selectedSegment, setSelectedSegment] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('');
   const [messageBody, setMessageBody] = useState('');
   const [useAi, setUseAi] = useState(false);
   const [aiGoal, setAiGoal] = useState<AiGoal>('higher_reply_rate');
@@ -59,19 +68,48 @@ export default function Campaigns() {
     }
   };
 
+  const fetchTemplates = async () => {
+    if (!selectedTenant) return;
+    try {
+      const data = await api.getTemplates(selectedTenant.id);
+      setTemplates(data);
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+    }
+  };
+
   useEffect(() => {
     fetchCampaigns();
   }, [selectedTenant]);
 
   const openCreateModal = async () => {
-    await fetchSegments();
+    await Promise.all([fetchSegments(), fetchTemplates()]);
     setShowCreateModal(true);
     setCampaignName('');
     setSelectedSegment('');
+    setSelectedTemplate('');
     setMessageBody('');
     setUseAi(false);
     setImprovedMessage('');
   };
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplate(templateId);
+    if (templateId) {
+      const template = templates.find(t => t.id === templateId);
+      if (template) {
+        setMessageBody(template.bodyTemplate);
+      }
+    }
+  };
+
+  const groupedTemplates = templates.reduce((acc, template) => {
+    if (!acc[template.category]) {
+      acc[template.category] = [];
+    }
+    acc[template.category].push(template);
+    return acc;
+  }, {} as Record<string, Template[]>);
 
   const handleAiImprove = async () => {
     if (!selectedTenant || !messageBody.trim()) return;
@@ -255,6 +293,30 @@ export default function Campaigns() {
               </select>
             </div>
             <div className="form-group">
+              <label>Use Template (Optional)</label>
+              <select
+                value={selectedTemplate}
+                onChange={(e) => handleTemplateSelect(e.target.value)}
+                style={{ marginBottom: '8px' }}
+              >
+                <option value="">-- Write custom message or select template --</option>
+                {Object.entries(groupedTemplates).map(([category, categoryTemplates]) => (
+                  <optgroup key={category} label={category.replace(/_/g, ' ')}>
+                    {categoryTemplates.map(template => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {templates.length === 0 && (
+                <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                  No templates found. Create templates in the Templates page.
+                </p>
+              )}
+            </div>
+            <div className="form-group">
               <label>Message *</label>
               <textarea
                 value={messageBody}
@@ -262,7 +324,7 @@ export default function Campaigns() {
                 placeholder="Hi {{firstName}}, this is a message from our team..."
               />
               <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{phone}}'}
+                Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{phone}}'}, {'{{companyName}}'}, {'{{agentName}}'}
               </p>
             </div>
             <div className="form-group">
