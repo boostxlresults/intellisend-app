@@ -44,7 +44,13 @@ export interface Contact {
 export interface ContactTag {
   id: string;
   contactId: string;
-  tag: string;
+  tagId: string;
+  tag: {
+    id: string;
+    name: string;
+    tenantId: string;
+    color?: string;
+  };
 }
 
 export interface Conversation {
@@ -309,9 +315,9 @@ export const api = {
     request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}`),
   
   addContactTag: (tenantId: string, contactId: string, tag: string) =>
-    request<ContactTag>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/tags`, {
+    request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/tags`, {
       method: 'POST',
-      body: JSON.stringify({ tag }),
+      body: JSON.stringify({ tagNames: [tag] }),
     }),
   
   removeContactTag: (tenantId: string, contactId: string, tag: string) =>

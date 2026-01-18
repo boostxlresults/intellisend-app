@@ -67,7 +67,7 @@ export default function ContactDetail() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const existingTagNames = contact?.tags?.map(t => t.tag.toLowerCase()) || [];
+  const existingTagNames = contact?.tags?.map(t => t.tag.name.toLowerCase()) || [];
   const filteredSuggestions = allTags
     .filter(tag => 
       tag.name.toLowerCase().includes(newTag.toLowerCase()) &&
@@ -99,10 +99,10 @@ export default function ContactDetail() {
     }
   };
 
-  const handleRemoveTag = async (tag: string) => {
+  const handleRemoveTag = async (tagId: string) => {
     if (!selectedTenant || !contactId) return;
     try {
-      await api.removeContactTag(selectedTenant.id, contactId, tag);
+      await api.removeContactTag(selectedTenant.id, contactId, tagId);
       fetchContact();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -186,10 +186,10 @@ export default function ContactDetail() {
                   key={t.id}
                   className="tag"
                   style={{ cursor: 'pointer' }}
-                  onClick={() => handleRemoveTag(t.tag)}
+                  onClick={() => handleRemoveTag(t.tagId)}
                   title="Click to remove"
                 >
-                  {t.tag} &times;
+                  {t.tag.name} &times;
                 </span>
               ))
             )}
