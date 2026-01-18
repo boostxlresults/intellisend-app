@@ -86,6 +86,22 @@ export default function ContactDetail() {
     tagInputRef.current?.focus();
   };
 
+  const availableTags = allTags.filter(tag => 
+    !existingTagNames.includes(tag.name.toLowerCase())
+  );
+
+  const handleQuickAddTag = async (tagName: string) => {
+    if (!selectedTenant || !contactId) return;
+    try {
+      await api.addContactTag(selectedTenant.id, contactId, tagName);
+      fetchContact();
+      fetchTags();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to add tag: ' + message);
+    }
+  };
+
   const handleAddTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTenant || !contactId || !newTag.trim()) return;
@@ -93,6 +109,7 @@ export default function ContactDetail() {
       await api.addContactTag(selectedTenant.id, contactId, newTag.trim());
       setNewTag('');
       fetchContact();
+      fetchTags();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Failed to add tag: ' + message);
@@ -194,7 +211,7 @@ export default function ContactDetail() {
               ))
             )}
           </div>
-          <form onSubmit={handleAddTag} style={{ display: 'flex', gap: '10px' }}>
+          <form onSubmit={handleAddTag} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
               <input
                 ref={tagInputRef}
@@ -202,7 +219,7 @@ export default function ContactDetail() {
                 value={newTag}
                 onChange={(e) => handleTagInputChange(e.target.value)}
                 onFocus={() => newTag.length > 0 && filteredSuggestions.length > 0 && setShowTagSuggestions(true)}
-                placeholder="Add tag..."
+                placeholder="Type new tag or click existing below..."
                 style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px', boxSizing: 'border-box' }}
               />
               {showTagSuggestions && filteredSuggestions.length > 0 && (
@@ -245,6 +262,35 @@ export default function ContactDetail() {
             </div>
             <button type="submit" className="btn btn-primary btn-small">Add</button>
           </form>
+          
+          {availableTags.length > 0 && (
+            <div>
+              <p style={{ fontSize: '12px', color: '#6B7280', marginBottom: '8px' }}>Click to add existing tag:</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {availableTags.map(tag => (
+                  <span
+                    key={tag.id}
+                    onClick={() => handleQuickAddTag(tag.name)}
+                    style={{
+                      display: 'inline-block',
+                      padding: '6px 12px',
+                      background: '#EFF6FF',
+                      color: '#3B82F6',
+                      borderRadius: '16px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: '1px solid #BFDBFE',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#DBEAFE'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#EFF6FF'; }}
+                  >
+                    + {tag.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
