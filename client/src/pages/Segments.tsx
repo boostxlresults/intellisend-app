@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTenant } from '../context/TenantContext';
-import { api, Segment, Contact } from '../api/client';
+import { api, Segment, Contact, Tag } from '../api/client';
 
 export default function Segments() {
   const { selectedTenant } = useTenant();
@@ -8,11 +8,14 @@ export default function Segments() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [allTags, setAllTags] = useState<string[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [segmentName, setSegmentName] = useState('');
   const [selectionMode, setSelectionMode] = useState<'tags' | 'manual'>('tags');
+  const [tagSearch, setTagSearch] = useState('');
+  const [contactSearch, setContactSearch] = useState('');
+  const [selectAllMode, setSelectAllMode] = useState(false);
 
   const fetchSegments = async () => {
     if (!selectedTenant) return;
@@ -54,37 +57,59 @@ export default function Segments() {
   const openCreateModal = async () => {
     await Promise.all([fetchContacts(), fetchTags()]);
     setShowCreateModal(true);
+    setSelectAllMode(false);
   };
+
+  const filteredTags = allTags.filter(tag => 
+    tag.name.toLowerCase().includes(tagSearch.toLowerCase())
+  );
 
   const getFilteredContacts = () => {
-    if (selectionMode === 'manual' || selectedTags.size === 0) {
-      return contacts;
+    let result = contacts;
+    
+    if (selectionMode === 'tags' && selectedTags.size > 0) {
+      result = contacts.filter(contact => 
+        contact.tags?.some(t => selectedTags.has(t.tag.name))
+      );
     }
-    return contacts.filter(contact => 
-      contact.tags?.some(t => selectedTags.has(t.tag))
-    );
+    
+    if (contactSearch) {
+      result = result.filter(contact =>
+        `${contact.firstName} ${contact.lastName}`.toLowerCase().includes(contactSearch.toLowerCase()) ||
+        contact.phone.includes(contactSearch)
+      );
+    }
+    
+    return result;
   };
 
-  const handleTagToggle = (tag: string) => {
+  const handleTagToggle = (tagName: string) => {
     const newTags = new Set(selectedTags);
-    if (newTags.has(tag)) {
-      newTags.delete(tag);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
     } else {
-      newTags.add(tag);
+      newTags.add(tagName);
     }
     setSelectedTags(newTags);
+    setSelectAllMode(false);
     
     if (selectionMode === 'tags') {
       const matchingContacts = contacts.filter(c => 
-        c.tags?.some(t => newTags.has(t.tag))
+        c.tags?.some(t => newTags.has(t.tag.name))
       );
       setSelectedContacts(new Set(matchingContacts.map(c => c.id)));
     }
   };
 
-  const selectAllFromTags = () => {
-    const filtered = getFilteredContacts();
-    setSelectedContacts(new Set(filtered.map(c => c.id)));
+  const handleSelectAll = () => {
+    if (selectAllMode) {
+      setSelectedContacts(new Set());
+      setSelectAllMode(false);
+    } else {
+      const filtered = getFilteredContacts();
+      setSelectedContacts(new Set(filtered.map(c => c.id)));
+      setSelectAllMode(true);
+    }
   };
 
   const handleCreateSegment = async () => {
@@ -99,6 +124,9 @@ export default function Segments() {
       setSelectedContacts(new Set());
       setSelectedTags(new Set());
       setSelectionMode('tags');
+      setTagSearch('');
+      setContactSearch('');
+      setSelectAllMode(false);
       fetchSegments();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -114,6 +142,7 @@ export default function Segments() {
       newSet.add(contactId);
     }
     setSelectedContacts(newSet);
+    setSelectAllMode(false);
   };
 
   const closeModal = () => {
@@ -122,6 +151,9 @@ export default function Segments() {
     setSelectedContacts(new Set());
     setSelectedTags(new Set());
     setSelectionMode('tags');
+    setTagSearch('');
+    setContactSearch('');
+    setSelectAllMode(false);
   };
 
   const filteredContacts = getFilteredContacts();
@@ -166,7 +198,7 @@ export default function Segments() {
       
       {showCreateModal && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
             <h3>Create Segment</h3>
             <div className="form-group">
               <label>Segment Name *</label>
@@ -201,43 +233,67 @@ export default function Segments() {
             {selectionMode === 'tags' && (
               <div className="form-group">
                 <label>Filter by Tags</label>
+                <input
+                  type="text"
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  placeholder="Search tags..."
+                  style={{ marginBottom: '10px', padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}
+                />
                 {allTags.length === 0 ? (
                   <p style={{ color: '#718096', fontSize: '14px' }}>No tags found. Add tags to contacts first.</p>
                 ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
-                    {allTags.map(tag => (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px', maxHeight: '150px', overflowY: 'auto', padding: '8px', background: '#f7fafc', borderRadius: '6px' }}>
+                    {filteredTags.map(tag => (
                       <button
-                        key={tag}
-                        onClick={() => handleTagToggle(tag)}
+                        key={tag.id}
+                        onClick={() => handleTagToggle(tag.name)}
                         style={{
                           padding: '6px 12px',
                           borderRadius: '20px',
                           border: 'none',
                           cursor: 'pointer',
                           fontSize: '13px',
-                          backgroundColor: selectedTags.has(tag) ? '#4299e1' : '#e2e8f0',
-                          color: selectedTags.has(tag) ? 'white' : '#4a5568',
+                          backgroundColor: selectedTags.has(tag.name) ? '#4299e1' : '#e2e8f0',
+                          color: selectedTags.has(tag.name) ? 'white' : '#4a5568',
+                          transition: 'all 0.15s ease',
                         }}
                       >
-                        {tag}
+                        {tag.name}
                       </button>
                     ))}
+                    {filteredTags.length === 0 && tagSearch && (
+                      <p style={{ color: '#718096', fontSize: '14px', margin: 0 }}>No tags match "{tagSearch}"</p>
+                    )}
                   </div>
-                )}
-                {selectedTags.size > 0 && (
-                  <button className="btn btn-secondary" onClick={selectAllFromTags} style={{ marginTop: '5px' }}>
-                    Select All Matching ({filteredContacts.length})
-                  </button>
                 )}
               </div>
             )}
 
             <div className="form-group">
-              <label>
-                {selectionMode === 'tags' && selectedTags.size > 0 
-                  ? `Matching Contacts (${selectedContacts.size} selected)`
-                  : `Select Contacts (${selectedContacts.size} selected)`}
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <label style={{ margin: 0 }}>
+                  {selectionMode === 'tags' && selectedTags.size > 0 
+                    ? `Matching Contacts (${selectedContacts.size} selected of ${filteredContacts.length})`
+                    : `Select Contacts (${selectedContacts.size} selected of ${contacts.length})`}
+                </label>
+                <button 
+                  className="btn btn-secondary btn-small"
+                  onClick={handleSelectAll}
+                  style={{ padding: '6px 12px', fontSize: '12px' }}
+                >
+                  {selectAllMode ? 'Deselect All' : `Select All (${filteredContacts.length})`}
+                </button>
+              </div>
+              
+              <input
+                type="text"
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+                placeholder="Search contacts by name or phone..."
+                style={{ marginBottom: '10px', padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}
+              />
+              
               <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
                 {filteredContacts.length === 0 ? (
                   <p style={{ padding: '20px', textAlign: 'center', color: '#718096' }}>
@@ -246,7 +302,7 @@ export default function Segments() {
                       : 'No contacts available'}
                   </p>
                 ) : (
-                  filteredContacts.map(contact => (
+                  filteredContacts.slice(0, 100).map(contact => (
                     <label
                       key={contact.id}
                       style={{
@@ -270,7 +326,7 @@ export default function Segments() {
                       </div>
                       {contact.tags && contact.tags.length > 0 && (
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {contact.tags.map(t => (
+                          {contact.tags.slice(0, 3).map(t => (
                             <span key={t.id} style={{
                               fontSize: '11px',
                               padding: '2px 6px',
@@ -278,13 +334,21 @@ export default function Segments() {
                               borderRadius: '10px',
                               color: '#4a5568',
                             }}>
-                              {t.tag}
+                              {t.tag.name}
                             </span>
                           ))}
+                          {contact.tags.length > 3 && (
+                            <span style={{ fontSize: '11px', color: '#718096' }}>+{contact.tags.length - 3}</span>
+                          )}
                         </div>
                       )}
                     </label>
                   ))
+                )}
+                {filteredContacts.length > 100 && (
+                  <div style={{ padding: '12px', textAlign: 'center', background: '#f7fafc', color: '#718096', fontSize: '13px' }}>
+                    Showing first 100 of {filteredContacts.length} contacts. Use Select All to include all.
+                  </div>
                 )}
               </div>
             </div>
@@ -296,7 +360,7 @@ export default function Segments() {
                 onClick={handleCreateSegment}
                 disabled={!segmentName.trim() || selectedContacts.size === 0}
               >
-                Create Segment ({selectedContacts.size} contacts)
+                Create Segment ({selectedContacts.size.toLocaleString()} contacts)
               </button>
             </div>
           </div>
