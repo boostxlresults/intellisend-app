@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import { api, Contact } from '../api/client';
+
+interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+}
 
 export default function ContactDetail() {
   const { contactId } = useParams<{ contactId: string }>();
@@ -10,9 +16,13 @@ export default function ContactDetail() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(true);
   const [newTag, setNewTag] = useState('');
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const fetchContact = async () => {
     if (!selectedTenant || !contactId) return;
@@ -27,9 +37,54 @@ export default function ContactDetail() {
     }
   };
 
+  const fetchTags = async () => {
+    if (!selectedTenant) return;
+    try {
+      const data = await api.getTags(selectedTenant.id);
+      setAllTags(data);
+    } catch (error) {
+      console.error('Failed to fetch tags:', error);
+    }
+  };
+
   useEffect(() => {
     fetchContact();
+    fetchTags();
   }, [selectedTenant, contactId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current && 
+        !suggestionsRef.current.contains(event.target as Node) &&
+        tagInputRef.current &&
+        !tagInputRef.current.contains(event.target as Node)
+      ) {
+        setShowTagSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const existingTagNames = contact?.tags?.map(t => t.tag.toLowerCase()) || [];
+  const filteredSuggestions = allTags
+    .filter(tag => 
+      tag.name.toLowerCase().includes(newTag.toLowerCase()) &&
+      !existingTagNames.includes(tag.name.toLowerCase())
+    )
+    .slice(0, 8);
+
+  const handleTagInputChange = (value: string) => {
+    setNewTag(value);
+    setShowTagSuggestions(value.length > 0 && filteredSuggestions.length > 0);
+  };
+
+  const handleSelectSuggestion = (tagName: string) => {
+    setNewTag(tagName);
+    setShowTagSuggestions(false);
+    tagInputRef.current?.focus();
+  };
 
   const handleAddTag = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,13 +195,54 @@ export default function ContactDetail() {
             )}
           </div>
           <form onSubmit={handleAddTag} style={{ display: 'flex', gap: '10px' }}>
-            <input
-              type="text"
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              placeholder="Add tag..."
-              style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px' }}
-            />
+            <div style={{ flex: 1, position: 'relative' }}>
+              <input
+                ref={tagInputRef}
+                type="text"
+                value={newTag}
+                onChange={(e) => handleTagInputChange(e.target.value)}
+                onFocus={() => newTag.length > 0 && filteredSuggestions.length > 0 && setShowTagSuggestions(true)}
+                placeholder="Add tag..."
+                style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px', boxSizing: 'border-box' }}
+              />
+              {showTagSuggestions && filteredSuggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: 'white',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    zIndex: 100,
+                    marginTop: '4px',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  {filteredSuggestions.map(tag => (
+                    <div
+                      key={tag.id}
+                      onClick={() => handleSelectSuggestion(tag.name)}
+                      style={{
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #F3F4F6',
+                        fontSize: '14px',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                    >
+                      {tag.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <button type="submit" className="btn btn-primary btn-small">Add</button>
           </form>
         </div>
