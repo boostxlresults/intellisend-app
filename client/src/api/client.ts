@@ -334,6 +334,11 @@ export const api = {
   getSegment: (tenantId: string, segmentId: string) =>
     request<Segment>(`${API_BASE}/tenants/${tenantId}/segments/${segmentId}`),
   
+  deleteSegment: (tenantId: string, segmentId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/segments/${segmentId}`, {
+      method: 'DELETE',
+    }),
+  
   getCampaigns: (tenantId: string) =>
     request<Campaign[]>(`${API_BASE}/tenants/${tenantId}/campaigns`),
   

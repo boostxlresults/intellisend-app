@@ -185,6 +185,29 @@ router.get('/:tenantId/segments/:segmentId', async (req, res) => {
   }
 });
 
+router.delete('/:tenantId/segments/:segmentId', async (req, res) => {
+  try {
+    const { tenantId, segmentId } = req.params;
+    
+    const segment = await prisma.segment.findFirst({
+      where: { id: segmentId, tenantId },
+    });
+    
+    if (!segment) {
+      return res.status(404).json({ error: 'Segment not found' });
+    }
+    
+    await prisma.segment.delete({
+      where: { id: segmentId },
+    });
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting segment:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/:tenantId/segments/:segmentId/members', async (req, res) => {
   try {
     const { tenantId, segmentId } = req.params;

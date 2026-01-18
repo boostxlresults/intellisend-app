@@ -54,6 +54,20 @@ export default function Segments() {
     fetchSegments();
   }, [selectedTenant]);
 
+  const handleDeleteSegment = async (segmentId: string, segmentName: string) => {
+    if (!selectedTenant) return;
+    if (!confirm(`Are you sure you want to delete the segment "${segmentName}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.deleteSegment(selectedTenant.id, segmentId);
+      setSegments(segments.filter(s => s.id !== segmentId));
+    } catch (error) {
+      console.error('Failed to delete segment:', error);
+      alert('Failed to delete segment');
+    }
+  };
+
   const openCreateModal = async () => {
     await Promise.all([fetchContacts(), fetchTags()]);
     setShowCreateModal(true);
@@ -180,6 +194,7 @@ export default function Segments() {
                 <th>Type</th>
                 <th>Members</th>
                 <th>Created</th>
+                <th style={{ width: '80px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -189,6 +204,24 @@ export default function Segments() {
                   <td>{segment.type}</td>
                   <td>{segment._count?.members || 0}</td>
                   <td>{new Date(segment.createdAt || segment.id).toLocaleDateString()}</td>
+                  <td>
+                    <button
+                      onClick={() => handleDeleteSegment(segment.id, segment.name)}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#FEE2E2',
+                        color: '#DC2626',
+                        border: '1px solid #FECACA',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#FCA5A5'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = '#FEE2E2'; }}
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
