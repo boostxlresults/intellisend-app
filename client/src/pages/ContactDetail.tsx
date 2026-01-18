@@ -67,7 +67,7 @@ export default function ContactDetail() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const existingTagNames = contact?.tags?.map(t => t.tag.name.toLowerCase()) || [];
+  const existingTagNames = contact?.tags?.map(t => t.tag?.name?.toLowerCase() || '').filter(Boolean) || [];
   const filteredSuggestions = allTags
     .filter(tag => 
       tag.name.toLowerCase().includes(newTag.toLowerCase()) &&
@@ -206,7 +206,7 @@ export default function ContactDetail() {
                   onClick={() => handleRemoveTag(t.tagId)}
                   title="Click to remove"
                 >
-                  {t.tag.name} &times;
+                  {t.tag?.name || 'Unknown'} &times;
                 </span>
               ))
             )}

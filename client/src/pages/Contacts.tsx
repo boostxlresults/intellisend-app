@@ -145,7 +145,7 @@ export default function Contacts() {
                   <td>{contact.customerType}</td>
                   <td>
                     {contact.tags?.map(t => (
-                      <span key={t.id} className="tag">{t.tag.name}</span>
+                      <span key={t.id} className="tag">{t.tag?.name || 'Unknown'}</span>
                     ))}
                   </td>
                 </tr>
