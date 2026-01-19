@@ -197,7 +197,8 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
     
     const inboundMessageSid = MessageSid || '';
     
-    if (inboundMessageSid && !conversation.serviceTitanBookingId) {
+    // Create a ServiceTitan booking job for each inbound message (not just the first one)
+    if (inboundMessageSid) {
       try {
         await enqueueServiceTitanBookingJob(
           inboundMessageSid,

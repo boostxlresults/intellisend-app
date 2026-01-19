@@ -48,6 +48,20 @@ async function processScheduledCampaigns() {
     for (const campaign of scheduledCampaigns) {
       console.log(`Processing campaign: ${campaign.name} (${campaign.id})`);
       
+      // Atomic claim: only proceed if we successfully change status from SCHEDULED to RUNNING
+      const claimed = await prisma.campaign.updateMany({
+        where: { 
+          id: campaign.id, 
+          status: 'SCHEDULED',
+        },
+        data: { status: 'RUNNING' },
+      });
+      
+      if (claimed.count === 0) {
+        console.log(`Campaign ${campaign.id} already claimed by another process, skipping`);
+        continue;
+      }
+      
       const sendContext = await getTenantSendContext(campaign.tenantId);
       
       if (!sendContext) {
@@ -60,14 +74,13 @@ async function processScheduledCampaigns() {
       }
       
       if (isWithinQuietHours(now, sendContext.timezone, sendContext.quietHoursStart, sendContext.quietHoursEnd)) {
-        console.log(`Quiet hours active for tenant ${campaign.tenantId} (${sendContext.timezone}), skipping sends this run`);
+        console.log(`Quiet hours active for tenant ${campaign.tenantId} (${sendContext.timezone}), rescheduling campaign`);
+        await prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { status: 'SCHEDULED' },
+        });
         continue;
       }
-      
-      await prisma.campaign.update({
-        where: { id: campaign.id },
-        data: { status: 'RUNNING' },
-      });
       
       if (!campaign.segment) {
         console.warn(`Campaign ${campaign.id} has no segment`);
