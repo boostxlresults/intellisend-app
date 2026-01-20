@@ -30,6 +30,7 @@ async function processScheduledCampaigns() {
         complianceContentReviewed: true,
       },
       include: {
+        tenant: true,
         segment: {
           include: {
             members: {
@@ -153,10 +154,13 @@ async function processScheduledCampaigns() {
           
           let messageBody = firstStep.bodyTemplate;
           
+          const companyName = campaign.tenant.publicName || campaign.tenant.name || '';
+          
           messageBody = messageBody
             .replace(/{{firstName}}/g, contact.firstName)
             .replace(/{{lastName}}/g, contact.lastName)
-            .replace(/{{phone}}/g, contact.phone);
+            .replace(/{{phone}}/g, contact.phone)
+            .replace(/{{companyName}}/g, companyName);
           
           if (firstStep.useAiAssist) {
             const improved = await generateImprovedMessage({
