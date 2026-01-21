@@ -30,7 +30,7 @@ export async function handleInboundMessage(
     where: { tenantId },
   });
 
-  if (!config || !config.enabled) {
+  if (!config || !config.enabled || !config.autoRespond) {
     return null;
   }
 

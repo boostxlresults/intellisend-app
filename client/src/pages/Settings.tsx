@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
-import { api, TenantNumber, Suppression, AiPersona, TenantSettings, ServiceTitanConfig } from '../api/client';
+import { api, TenantNumber, Suppression, AiPersona, TenantSettings, ServiceTitanConfig, AIAgentConfig } from '../api/client';
 
 interface TwilioIntegration {
   twilioConfigured: boolean;
@@ -50,6 +50,18 @@ export default function Settings() {
     bookingProviderId: '',
     enabled: false,
   });
+  const [, setAiAgentConfig] = useState<AIAgentConfig | null>(null);
+  const [savingAiAgent, setSavingAiAgent] = useState(false);
+  const [aiAgentForm, setAiAgentForm] = useState({
+    enabled: false,
+    autoRespond: true,
+    maxMessagesPerSession: 10,
+    qualificationThreshold: 80,
+    responseDelaySeconds: 30,
+    defaultBusinessUnitId: '',
+    defaultJobTypeId: '',
+    defaultCampaignId: '',
+  });
 
   const fetchData = async () => {
     if (!selectedTenant) return;
@@ -62,9 +74,10 @@ export default function Settings() {
         api.getTenantSettings(selectedTenant.id),
         api.getIntegrations(selectedTenant.id),
         api.getServiceTitanConfig(selectedTenant.id),
+        api.getAIAgentConfig(selectedTenant.id),
       ]);
       
-      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult] = results;
+      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult, aiAgentResult] = results;
       
       if (numsResult.status === 'fulfilled') setNumbers(numsResult.value);
       if (suppsResult.status === 'fulfilled') setSuppressions(suppsResult.value);
@@ -83,6 +96,20 @@ export default function Settings() {
           bookingProvider: stConfigData.bookingProvider || 'IntelliSend-SMS',
           bookingProviderId: stConfigData.bookingProviderId || '',
           enabled: stConfigData.enabled || false,
+        });
+      }
+      if (aiAgentResult.status === 'fulfilled' && aiAgentResult.value) {
+        const aiData = aiAgentResult.value;
+        setAiAgentConfig(aiData);
+        setAiAgentForm({
+          enabled: aiData.enabled,
+          autoRespond: aiData.autoRespond,
+          maxMessagesPerSession: aiData.maxMessagesPerSession,
+          qualificationThreshold: aiData.qualificationThreshold,
+          responseDelaySeconds: aiData.responseDelaySeconds,
+          defaultBusinessUnitId: aiData.defaultBusinessUnitId || '',
+          defaultJobTypeId: aiData.defaultJobTypeId || '',
+          defaultCampaignId: aiData.defaultCampaignId || '',
         });
       }
     } catch (error) {
@@ -305,6 +332,31 @@ export default function Settings() {
       alert('Failed to test ServiceTitan: ' + message);
     } finally {
       setTestingStConnection(false);
+    }
+  };
+
+  const handleSaveAiAgent = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedTenant) return;
+    setSavingAiAgent(true);
+    try {
+      const savedConfig = await api.updateAIAgentConfig(selectedTenant.id, {
+        enabled: aiAgentForm.enabled,
+        autoRespond: aiAgentForm.autoRespond,
+        maxMessagesPerSession: aiAgentForm.maxMessagesPerSession,
+        qualificationThreshold: aiAgentForm.qualificationThreshold,
+        responseDelaySeconds: aiAgentForm.responseDelaySeconds,
+        defaultBusinessUnitId: aiAgentForm.defaultBusinessUnitId || null,
+        defaultJobTypeId: aiAgentForm.defaultJobTypeId || null,
+        defaultCampaignId: aiAgentForm.defaultCampaignId || null,
+      });
+      setAiAgentConfig(savedConfig);
+      alert('AI Booking Agent configuration saved!');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to save AI Agent config: ' + message);
+    } finally {
+      setSavingAiAgent(false);
     }
   };
 
@@ -756,6 +808,145 @@ export default function Settings() {
                   <p style={{ fontSize: '12px', color: '#2f855a', marginTop: '8px' }}>
                     Inbound SMS replies will automatically create ServiceTitan Bookings to alert your team.
                   </p>
+                </div>
+              )}
+            </form>
+          </div>
+
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3>AI Booking Agent</h3>
+              <span style={{ 
+                padding: '4px 12px', 
+                borderRadius: '4px', 
+                fontSize: '12px',
+                fontWeight: 500,
+                background: aiAgentForm.enabled ? '#c6f6d5' : '#fed7d7',
+                color: aiAgentForm.enabled ? '#276749' : '#c53030'
+              }}>
+                {aiAgentForm.enabled ? 'Active' : 'Disabled'}
+              </span>
+            </div>
+            <p style={{ fontSize: '13px', color: '#718096', marginBottom: '16px' }}>
+              The AI Booking Agent automatically responds to inbound SMS replies, qualifies leads, and creates ServiceTitan jobs or bookings based on conversation quality.
+            </p>
+            
+            <form onSubmit={handleSaveAiAgent}>
+              <div className="form-group checkbox-group" style={{ marginBottom: '16px' }}>
+                <input
+                  type="checkbox"
+                  id="aiAgentEnabled"
+                  checked={aiAgentForm.enabled}
+                  onChange={(e) => setAiAgentForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                />
+                <label htmlFor="aiAgentEnabled" style={{ fontWeight: 500 }}>Enable AI Booking Agent</label>
+              </div>
+              
+              <div className="form-group checkbox-group" style={{ marginBottom: '16px' }}>
+                <input
+                  type="checkbox"
+                  id="aiAgentAutoRespond"
+                  checked={aiAgentForm.autoRespond}
+                  onChange={(e) => setAiAgentForm(prev => ({ ...prev, autoRespond: e.target.checked }))}
+                />
+                <label htmlFor="aiAgentAutoRespond">Auto-respond to inbound messages</label>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-group">
+                  <label>Max Messages Per Session</label>
+                  <input
+                    type="number"
+                    value={aiAgentForm.maxMessagesPerSession}
+                    onChange={(e) => setAiAgentForm(prev => ({ ...prev, maxMessagesPerSession: parseInt(e.target.value) || 10 }))}
+                    min="3"
+                    max="50"
+                  />
+                  <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                    Hands off to CSR after this many messages
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label>Qualification Threshold (0-100)</label>
+                  <input
+                    type="number"
+                    value={aiAgentForm.qualificationThreshold}
+                    onChange={(e) => setAiAgentForm(prev => ({ ...prev, qualificationThreshold: parseInt(e.target.value) || 80 }))}
+                    min="50"
+                    max="100"
+                  />
+                  <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                    Score needed for direct job booking (vs CSR handoff)
+                  </p>
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label>Response Delay (seconds)</label>
+                <input
+                  type="number"
+                  value={aiAgentForm.responseDelaySeconds}
+                  onChange={(e) => setAiAgentForm(prev => ({ ...prev, responseDelaySeconds: parseInt(e.target.value) || 30 }))}
+                  min="5"
+                  max="120"
+                  style={{ maxWidth: '200px' }}
+                />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  Delay before sending AI response (makes it seem more human)
+                </p>
+              </div>
+              
+              <h4 style={{ marginTop: '20px', marginBottom: '12px', color: '#2d3748', fontSize: '14px' }}>ServiceTitan Defaults (Optional)</h4>
+              <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px' }}>
+                When the AI creates a job/booking, these IDs will be used. Leave blank to use ServiceTitan defaults.
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                <div className="form-group">
+                  <label>Business Unit ID</label>
+                  <input
+                    type="text"
+                    value={aiAgentForm.defaultBusinessUnitId}
+                    onChange={(e) => setAiAgentForm(prev => ({ ...prev, defaultBusinessUnitId: e.target.value }))}
+                    placeholder="e.g., 12345"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Job Type ID</label>
+                  <input
+                    type="text"
+                    value={aiAgentForm.defaultJobTypeId}
+                    onChange={(e) => setAiAgentForm(prev => ({ ...prev, defaultJobTypeId: e.target.value }))}
+                    placeholder="e.g., 67890"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Campaign ID</label>
+                  <input
+                    type="text"
+                    value={aiAgentForm.defaultCampaignId}
+                    onChange={(e) => setAiAgentForm(prev => ({ ...prev, defaultCampaignId: e.target.value }))}
+                    placeholder="e.g., 11111"
+                  />
+                </div>
+              </div>
+              
+              <button type="submit" className="btn btn-primary" disabled={savingAiAgent} style={{ marginTop: '16px' }}>
+                {savingAiAgent ? 'Saving...' : 'Save AI Agent Settings'}
+              </button>
+              
+              {aiAgentForm.enabled && (
+                <div style={{ marginTop: '16px', padding: '12px', background: '#ebf8ff', borderRadius: '6px', border: '1px solid #90cdf4' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#2b6cb0', fontSize: '16px' }}>i</span>
+                    <span style={{ fontWeight: 500, color: '#2c5282' }}>How it works</span>
+                  </div>
+                  <ul style={{ fontSize: '12px', color: '#2a4365', marginTop: '8px', paddingLeft: '20px', lineHeight: '1.6' }}>
+                    <li>When a customer replies, the AI detects intent (book, info, stop, etc.)</li>
+                    <li>For booking intent, AI collects: name, address, service type, availability</li>
+                    <li>Qualification score determines: Direct Job ({'>='}{aiAgentForm.qualificationThreshold}) vs CSR Booking ({'<'}{aiAgentForm.qualificationThreshold})</li>
+                    <li>AI responses are sent after a {aiAgentForm.responseDelaySeconds}s delay</li>
+                  </ul>
                 </div>
               )}
             </form>

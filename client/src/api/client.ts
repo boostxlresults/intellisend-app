@@ -681,4 +681,28 @@ export const api = {
     }>(`${API_BASE}/tenants/${tenantId}/servicetitan-test`, {
       method: 'POST',
     }),
+
+  getAIAgentConfig: (tenantId: string) =>
+    request<AIAgentConfig>(`${API_BASE}/tenants/${tenantId}/ai-agent/config`),
+
+  updateAIAgentConfig: (tenantId: string, data: Partial<AIAgentConfig>) =>
+    request<AIAgentConfig>(`${API_BASE}/tenants/${tenantId}/ai-agent/config`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
+
+export interface AIAgentConfig {
+  id: string;
+  tenantId: string;
+  enabled: boolean;
+  autoRespond: boolean;
+  maxMessagesPerSession: number;
+  qualificationThreshold: number;
+  defaultBusinessUnitId?: string | null;
+  defaultJobTypeId?: string | null;
+  defaultCampaignId?: string | null;
+  responseDelaySeconds: number;
+  createdAt: string;
+  updatedAt: string;
+}
