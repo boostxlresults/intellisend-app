@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
-import { isStopKeyword } from '../utils/smsKeywords';
+import { isStopKeyword, isOptInKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
 import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
@@ -90,6 +90,64 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       
       res.type('text/xml').send(twimlResponse);
       return;
+    }
+    
+    // Handle Y/YES opt-in replies
+    if (isOptInKeyword(Body)) {
+      // Find or create the contact
+      let optInContact = await prisma.contact.findFirst({
+        where: { tenantId, phone: From },
+      });
+      
+      if (optInContact) {
+        // Find or create "Opted In" tag for this tenant
+        let optedInTag = await prisma.tag.findFirst({
+          where: { tenantId, name: 'Opted In' },
+        });
+        
+        if (!optedInTag) {
+          optedInTag = await prisma.tag.create({
+            data: {
+              tenantId,
+              name: 'Opted In',
+              color: '#38a169', // Green color
+            },
+          });
+        }
+        
+        // Add tag to contact (upsert to avoid duplicates)
+        await prisma.contactTag.upsert({
+          where: {
+            contactId_tagId: {
+              contactId: optInContact.id,
+              tagId: optedInTag.id,
+            },
+          },
+          create: {
+            contactId: optInContact.id,
+            tagId: optedInTag.id,
+          },
+          update: {},
+        });
+        
+        // Update consent timestamp and source
+        await prisma.contact.update({
+          where: { id: optInContact.id },
+          data: {
+            consentSource: 'SMS_REPLY_Y',
+            consentTimestamp: new Date(),
+          },
+        });
+        
+        // Remove from suppression list if they were suppressed
+        await prisma.suppression.deleteMany({
+          where: { tenantId, phone: From },
+        });
+        
+        console.log(`Contact ${From} opted IN for tenant ${tenantId} - tagged as "Opted In"`);
+      }
+      
+      // Continue processing the message normally (don't return early)
     }
     
     let contact = await prisma.contact.findFirst({
