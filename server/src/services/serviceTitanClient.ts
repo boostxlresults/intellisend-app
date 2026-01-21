@@ -28,6 +28,7 @@ export interface CreateBookingFromInboundSmsOptions {
   toNumber: string;
   lastInboundMessage: string;
   conversationSummary: string;
+  messageSid?: string;
   campaignName?: string;
   frontendUrl?: string;
 }
@@ -39,7 +40,7 @@ export interface BookingResult {
   errorCode?: 'AUTH_FAILED' | 'INVALID_TENANT' | 'MISSING_SCOPE' | 'RATE_LIMITED' | 'API_ERROR' | 'NETWORK_ERROR';
 }
 
-async function getServiceTitanConfig(tenantId: string) {
+export async function getServiceTitanConfig(tenantId: string) {
   return prisma.serviceTitanConfig.findUnique({
     where: { tenantId },
     include: { tenant: { select: { publicName: true } } }
@@ -53,7 +54,7 @@ function getAuthBaseUrl(apiBaseUrl: string): string {
   return 'https://auth.servicetitan.io';
 }
 
-async function getAccessToken(config: {
+export async function getServiceTitanToken(config: {
   tenantApiBaseUrl: string;
   serviceTitanTenantId: string;
   clientId: string;
@@ -112,7 +113,7 @@ export async function createBookingFromInboundSms(
       return { success: false, error: 'ServiceTitan integration not configured or disabled', errorCode: 'API_ERROR' };
     }
 
-    const accessToken = await getAccessToken({
+    const accessToken = await getServiceTitanToken({
       tenantApiBaseUrl: config.tenantApiBaseUrl,
       serviceTitanTenantId: config.serviceTitanTenantId,
       clientId: config.clientId,
@@ -158,7 +159,7 @@ export async function createBookingFromInboundSms(
     ].filter(line => line !== null).join('\n');
 
     const bookingPayload = {
-      externalId: options.messageSid,
+      externalId: options.messageSid || `ai-agent-${Date.now()}`,
       source: config.bookingProvider,
       name: `${options.contact.firstName} ${options.contact.lastName}`.trim() || 'Unknown',
       isFirstTimeClient: true,
@@ -285,7 +286,7 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
       return { ok: false, error: 'ServiceTitan configuration not found', details };
     }
 
-    const accessToken = await getAccessToken({
+    const accessToken = await getServiceTitanToken({
       tenantApiBaseUrl: config.tenantApiBaseUrl,
       serviceTitanTenantId: config.serviceTitanTenantId,
       clientId: config.clientId,

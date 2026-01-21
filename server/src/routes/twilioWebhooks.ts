@@ -4,6 +4,7 @@ import { validateTwilioSignature } from '../middleware/twilioSignature';
 import { isStopKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
+import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
 
 const router = Router();
 
@@ -216,6 +217,46 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
     }
     
     console.log(`Inbound message saved for conversation ${conversation.id}`);
+    
+    // Process with AI agent if enabled (non-blocking)
+    handleInboundMessage(
+      conversation.id,
+      tenantId,
+      contact.id,
+      Body || ''
+    ).then(async (aiResponse) => {
+      if (aiResponse && aiResponse.shouldRespond && aiResponse.responseText) {
+        console.log(`[AI Agent] Response for conversation ${conversation.id}: ${aiResponse.newState}`);
+        
+        // Get the tenant's default from number
+        const sendContext = await prisma.tenantSettings.findUnique({
+          where: { tenantId },
+          include: { defaultFromNumber: true },
+        });
+        
+        const fromNumber = sendContext?.defaultFromNumber?.phoneNumber || To;
+        
+        // Add opt-out footer
+        const messageWithFooter = `${aiResponse.responseText}\n\nReply STOP to unsubscribe.`;
+        
+        // Queue the AI response for sending
+        await prisma.outboundMessageQueue.create({
+          data: {
+            tenantId,
+            contactId: contact.id,
+            phone: From,
+            body: messageWithFooter,
+            fromNumber,
+            status: 'PENDING',
+            processAfter: new Date(Date.now() + 30000), // 30 second delay to seem more human
+          },
+        });
+        
+        console.log(`[AI Agent] Queued response to ${From}`);
+      }
+    }).catch(err => {
+      console.error('[AI Agent] Error processing inbound:', err);
+    });
     
     res.type('text/xml').send('<Response></Response>');
   } catch (error: any) {

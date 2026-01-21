@@ -35,6 +35,7 @@ model Tenant {
   tags                 Tag[]
   sequences            Sequence[]
   serviceTitanConfig   ServiceTitanConfig?
+  aiAgentConfig        AIAgentConfig?
 }
 
 model TenantSettings {
@@ -266,11 +267,12 @@ model Campaign {
   complianceContentReviewed Boolean @default(false)
   complianceNotes         String?
 
-  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  segment  Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
-  steps    CampaignStep[]
-  messages Message[]
-  variants CampaignVariant[]
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment       Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  steps         CampaignStep[]
+  messages      Message[]
+  variants      CampaignVariant[]
+  offerContexts OfferContext[]
 }
 
 model CampaignStep {
@@ -282,8 +284,9 @@ model CampaignStep {
   useAiAssist  Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  messages Message[]
+  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  offerContexts OfferContext[]
 }
 
 enum ConversationStatus {
@@ -303,9 +306,10 @@ model Conversation {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contact  Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  messages Message[]
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact        Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  aiAgentSession AIAgentSession?
 
   @@index([tenantId])
   @@index([contactId])
@@ -712,6 +716,116 @@ model TenantBranding {
   updatedAt        DateTime @updatedAt
 
   @@index([customDomain])
+}
+
+// ============================================
+// AI BOOKING AGENT
+// ============================================
+
+enum ConversationAgentState {
+  IDLE                    // No active AI conversation
+  OFFER_SENT              // Outbound campaign sent, awaiting reply
+  INBOUND_RECEIVED        // Customer replied, needs classification
+  QUALIFYING              // AI is asking qualifying questions
+  MATCHING_ST_RECORDS     // Searching ServiceTitan for existing customer
+  CREATING_ST_CUSTOMER    // Creating new customer/location in ST
+  PROPOSING_TIMES         // Offering appointment times
+  BOOKING_JOB             // Creating job/appointment in ST
+  CONFIRMED               // Appointment booked and confirmed
+  HANDOFF_TO_CSR          // Created booking for CSR follow-up (warm lead)
+  COMPLETED               // Conversation concluded
+}
+
+enum AIAgentOutcome {
+  PENDING                 // Still in progress
+  FULL_BOOKING            // Customer + Location + Job created
+  CSR_BOOKING             // Booking created for CSR follow-up
+  NOT_INTERESTED          // Customer declined
+  OPT_OUT                 // Customer opted out
+  NEEDS_HUMAN             // Escalated to human
+}
+
+model OfferContext {
+  id                String   @id @default(uuid())
+  tenantId          String
+  campaignId        String?
+  campaignStepId    String?
+  offerType         String   // e.g., "HVAC Tune-Up Special"
+  offerName         String   // Display name
+  price             String?  // e.g., "$28.88"
+  description       String?
+  businessUnitHint  String?  // Suggested business unit for ST
+  jobTypeHint       String?  // Suggested job type for ST
+  terms             String?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignStep    CampaignStep?    @relation(fields: [campaignStepId], references: [id], onDelete: SetNull)
+  aiAgentSessions AIAgentSession[]
+
+  @@index([tenantId])
+  @@index([campaignId])
+}
+
+model AIAgentSession {
+  id                  String                 @id @default(uuid())
+  conversationId      String
+  tenantId            String
+  contactId           String
+  state               ConversationAgentState @default(INBOUND_RECEIVED)
+  outcome             AIAgentOutcome         @default(PENDING)
+  
+  // Collected data during qualification
+  confirmedAddress    String?
+  confirmedCity       String?
+  confirmedState      String?
+  confirmedZip        String?
+  confirmedName       String?
+  confirmedEmail      String?
+  preferredTimeSlot   String?
+  specialInstructions String?
+  
+  // ServiceTitan IDs once created/matched
+  stCustomerId        String?
+  stLocationId        String?
+  stJobId             String?
+  stAppointmentId     String?
+  stBookingId         String?
+  
+  // Tracking
+  offerContextId      String?
+  lastIntent          String?               // Last classified intent
+  qualificationScore  Int       @default(0) // 0-100, higher = more qualified
+  messageCount        Int       @default(0)
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  offerContext OfferContext? @relation(fields: [offerContextId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId])
+  @@index([tenantId])
+  @@index([state])
+}
+
+model AIAgentConfig {
+  id                    String   @id @default(uuid())
+  tenantId              String   @unique
+  enabled               Boolean  @default(false)
+  autoRespond           Boolean  @default(true)  // Auto-send AI responses
+  maxMessagesPerSession Int      @default(10)    // Max AI messages before handoff
+  qualificationThreshold Int     @default(80)    // Score needed for full booking
+  defaultBusinessUnitId String?
+  defaultJobTypeId      String?
+  defaultCampaignId     String?  // ST marketing campaign ID
+  responseDelaySeconds  Int      @default(30)    // Delay before AI responds (seems more human)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 // ============================================
