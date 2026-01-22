@@ -128,11 +128,25 @@ export default function Settings() {
     if (!selectedTenant) return;
     setSavingSettings(true);
     const formData = new FormData(e.currentTarget);
+    
+    const convertTo24Hour = (hour: number, period: string): number => {
+      if (period === 'AM') {
+        return hour === 12 ? 0 : hour;
+      } else {
+        return hour === 12 ? 12 : hour + 12;
+      }
+    };
+    
+    const startHour = parseInt(formData.get('quietHoursStartHour') as string);
+    const startPeriod = formData.get('quietHoursStartPeriod') as string;
+    const endHour = parseInt(formData.get('quietHoursEndHour') as string);
+    const endPeriod = formData.get('quietHoursEndPeriod') as string;
+    
     try {
       await api.updateTenantSettings(selectedTenant.id, {
         timezone: formData.get('timezone') as string,
-        quietHoursStart: formData.get('quietHoursStart') as unknown as number,
-        quietHoursEnd: formData.get('quietHoursEnd') as unknown as number,
+        quietHoursStart: convertTo24Hour(startHour, startPeriod),
+        quietHoursEnd: convertTo24Hour(endHour, endPeriod),
         defaultFromNumberId: formData.get('defaultFromNumberId') as string || undefined,
         sendRatePerMinute: parseInt(formData.get('sendRatePerMinute') as string) || 30,
         sendJitterMinMs: parseInt(formData.get('sendJitterMinMs') as string) || 1000,
@@ -392,24 +406,68 @@ export default function Settings() {
               </div>
               <div style={{ display: 'flex', gap: '16px' }}>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label>Quiet Hours Start (24h)</label>
-                  <input 
-                    type="time" 
-                    name="quietHoursStart" 
-                    defaultValue={tenantSettings?.quietHoursStartFormatted || '20:00'}
-                  />
+                  <label>Quiet Hours Start</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select 
+                      name="quietHoursStartHour"
+                      defaultValue={(() => {
+                        const time = tenantSettings?.quietHoursStartFormatted || '20:00';
+                        const hour = parseInt(time.split(':')[0]);
+                        return hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+                      })()}
+                      style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                    >
+                      {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                    <select 
+                      name="quietHoursStartPeriod"
+                      defaultValue={(() => {
+                        const time = tenantSettings?.quietHoursStartFormatted || '20:00';
+                        const hour = parseInt(time.split(':')[0]);
+                        return hour >= 12 ? 'PM' : 'AM';
+                      })()}
+                      style={{ width: '70px', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label>Quiet Hours End (24h)</label>
-                  <input 
-                    type="time" 
-                    name="quietHoursEnd" 
-                    defaultValue={tenantSettings?.quietHoursEndFormatted || '08:00'}
-                  />
+                  <label>Quiet Hours End</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select 
+                      name="quietHoursEndHour"
+                      defaultValue={(() => {
+                        const time = tenantSettings?.quietHoursEndFormatted || '08:00';
+                        const hour = parseInt(time.split(':')[0]);
+                        return hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+                      })()}
+                      style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                    >
+                      {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                    <select 
+                      name="quietHoursEndPeriod"
+                      defaultValue={(() => {
+                        const time = tenantSettings?.quietHoursEndFormatted || '08:00';
+                        const hour = parseInt(time.split(':')[0]);
+                        return hour >= 12 ? 'PM' : 'AM';
+                      })()}
+                      style={{ width: '70px', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
                 </div>
               </div>
               <p style={{ fontSize: '12px', color: '#718096', marginBottom: '16px' }}>
-                No outbound SMS will be sent during quiet hours (overnight). For 8pm-8am, set Start=20:00 and End=08:00.
+                No outbound SMS will be sent during quiet hours (overnight). Default is 8 PM to 8 AM.
               </p>
               
               <h4 style={{ marginTop: '24px', marginBottom: '12px', color: '#2d3748' }}>Send Rate Settings</h4>
