@@ -190,7 +190,7 @@ export default function Analytics() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" tickFormatter={formatDate} />
                     <YAxis />
-                    <Tooltip labelFormatter={(label) => new Date(label).toLocaleDateString()} />
+                    <Tooltip labelFormatter={(label: string) => new Date(label).toLocaleDateString()} />
                     <Legend />
                     <Line type="monotone" dataKey="sent" stroke="#4299e1" name="Sent" strokeWidth={2} />
                     <Line type="monotone" dataKey="inbound" stroke="#48bb78" name="Replies" strokeWidth={2} />
@@ -209,7 +209,7 @@ export default function Analytics() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" tickFormatter={formatDate} />
                     <YAxis />
-                    <Tooltip labelFormatter={(label) => new Date(label).toLocaleDateString()} />
+                    <Tooltip labelFormatter={(label: string) => new Date(label).toLocaleDateString()} />
                     <Legend />
                     <Bar dataKey="sent" fill="#4299e1" name="Sent" />
                     <Bar dataKey="failed" fill="#e53e3e" name="Failed" />
@@ -353,7 +353,7 @@ export default function Analytics() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" tickFormatter={formatDate} />
                     <YAxis />
-                    <Tooltip labelFormatter={(label) => new Date(label).toLocaleDateString()} />
+                    <Tooltip labelFormatter={(label: string) => new Date(label).toLocaleDateString()} />
                     <Legend />
                     <Line type="monotone" dataKey="optOuts" stroke="#ed8936" name="Opt-Outs" strokeWidth={2} />
                     <Line type="monotone" dataKey="complaints" stroke="#e53e3e" name="Complaints" strokeWidth={2} />
