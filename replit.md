@@ -19,6 +19,8 @@ The platform is built on a modern tech stack featuring Node.js with TypeScript a
 - **AI Integration**:
     - **AI-Assisted Content Creation**: GPT-4o-mini for generating improved message content, suggesting replies, and intent classification.
     - **AI Booking Agent**: An intelligent agent capable of qualifying leads, booking appointments via ServiceTitan, and managing conversation states. It includes intent classification, qualification scoring, tiered routing, and ServiceTitan customer search integration.
+    - **Per-Tenant AI Personas**: Each tenant can configure custom AI personalities with system prompts. Includes 4 starter templates (Professional, Friendly, Concise, Home Services Expert) or custom prompts.
+    - **Per-Tenant Knowledge Base**: Tenants can upload articles about their company, services, pricing, FAQs. The AI uses this information when responding to customers.
 - **Campaign & Automation Features**:
     - **Campaign System**: Blast campaigns with message templates, AI assistance, scheduling, and A/B testing capabilities.
     - **Automated Drip Sequences**: Multi-step message automation with configurable delays and enrollment tracking.
