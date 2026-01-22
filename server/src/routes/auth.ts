@@ -28,11 +28,6 @@ router.post('/setup-admin', async (req, res) => {
       data: {
         name: (tenantName || 'default').toLowerCase().replace(/\s+/g, '-'),
         publicName: tenantName || 'IntelliSend',
-        plan: 'pro',
-        monthlyMessageLimit: 10000,
-        quietHoursStart: '21:00',
-        quietHoursEnd: '08:00',
-        quietHoursTimezone: 'America/New_York',
       },
     });
 
@@ -43,7 +38,7 @@ router.post('/setup-admin', async (req, res) => {
         email: email.toLowerCase(),
         passwordHash,
         name: 'Admin',
-        role: 'admin',
+        role: 'ADMIN',
         tenantId: tenant.id,
       },
     });
