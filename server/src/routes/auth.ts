@@ -4,6 +4,62 @@ import { prisma } from '../index';
 
 const router = Router();
 
+router.post('/setup-admin', async (req, res) => {
+  try {
+    const { email, password, tenantName, setupKey } = req.body;
+
+    if (setupKey !== 'INTELLISEND_SETUP_2024') {
+      res.status(403).json({ error: 'Invalid setup key' });
+      return;
+    }
+
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+
+    const existingUsers = await prisma.user.count();
+    if (existingUsers > 0) {
+      res.status(400).json({ error: 'Setup already completed. Users exist in database.' });
+      return;
+    }
+
+    const tenant = await prisma.tenant.create({
+      data: {
+        name: (tenantName || 'default').toLowerCase().replace(/\s+/g, '-'),
+        publicName: tenantName || 'IntelliSend',
+        plan: 'pro',
+        monthlyMessageLimit: 10000,
+        quietHoursStart: '21:00',
+        quietHoursEnd: '08:00',
+        quietHoursTimezone: 'America/New_York',
+      },
+    });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        passwordHash,
+        name: 'Admin',
+        role: 'admin',
+        tenantId: tenant.id,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Admin user created successfully',
+      email: user.email,
+      tenantName: tenant.publicName,
+    });
+  } catch (error: any) {
+    console.error('Setup error:', error);
+    res.status(500).json({ error: 'Setup failed: ' + error.message });
+  }
+});
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
