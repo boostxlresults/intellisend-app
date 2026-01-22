@@ -325,7 +325,7 @@ export default function Settings() {
           'ServiceTitan connection successful!\n\n' +
           '✓ OAuth Authentication: Passed\n' +
           '✓ API Access: Passed\n' +
-          '✓ Bookings API: Passed\n\n' +
+          '✓ CRM API: Passed\n\n' +
           'Your integration is ready to create bookings.'
         );
       } else {
@@ -333,7 +333,7 @@ export default function Settings() {
         const statusLines = [
           `${details.oauth ? '✓' : '✗'} OAuth Authentication: ${details.oauth ? 'Passed' : 'Failed'}`,
           `${details.apiAccess ? '✓' : '✗'} API Access: ${details.apiAccess ? 'Passed' : 'Failed'}`,
-          `${details.bookingsAccess ? '✓' : '✗'} Bookings API: ${details.bookingsAccess ? 'Passed' : 'Failed'}`,
+          `${details.bookingsAccess ? '✓' : '✗'} CRM API: ${details.bookingsAccess ? 'Passed' : 'Failed'}`,
         ];
         alert(
           'ServiceTitan test failed:\n\n' +

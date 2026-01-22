@@ -316,8 +316,8 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
     }
     details.apiAccess = true;
 
-    const bookingsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/bookings?page=1&pageSize=1`;
-    const bookingsResponse = await fetch(bookingsUrl, {
+    const customersUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers?page=1&pageSize=1`;
+    const customersResponse = await fetch(customersUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -325,21 +325,21 @@ export async function testServiceTitanConnection(tenantId: string): Promise<{
       },
     });
 
-    if (!bookingsResponse.ok) {
-      if (bookingsResponse.status === 403) {
+    if (!customersResponse.ok) {
+      if (customersResponse.status === 403) {
         return { 
           ok: false, 
-          error: 'Bookings API access denied - ensure "CRM > Bookings" read/write scope is enabled for your app in the ServiceTitan Developer Portal', 
+          error: 'CRM API access denied - ensure "CRM > Customers" read/write scope is enabled for your app in the ServiceTitan Developer Portal', 
           details 
         };
       }
       return { 
         ok: false, 
-        error: `Bookings API failed: ${bookingsResponse.status} ${bookingsResponse.statusText}`, 
+        error: `CRM API failed: ${customersResponse.status} ${customersResponse.statusText}`, 
         details 
       };
     }
-    details.bookingsAccess = true;
+    details.bookingsAccess = true; // CRM access confirmed (customers + bookings use same permissions)
 
     return { ok: true, details };
   } catch (error) {
