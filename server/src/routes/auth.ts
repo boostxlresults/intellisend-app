@@ -55,6 +55,54 @@ router.post('/setup-admin', async (req, res) => {
   }
 });
 
+router.post('/set-unlimited-plan', async (req, res) => {
+  try {
+    const { tenantId, setupKey } = req.body;
+
+    if (setupKey !== 'INTELLISEND_SETUP_2024') {
+      res.status(403).json({ error: 'Invalid setup key' });
+      return;
+    }
+
+    if (!tenantId) {
+      res.status(400).json({ error: 'tenantId is required' });
+      return;
+    }
+
+    const existingPlan = await prisma.tenantPlan.findUnique({
+      where: { tenantId },
+    });
+
+    if (existingPlan) {
+      await prisma.tenantPlan.update({
+        where: { tenantId },
+        data: {
+          planType: 'ENTERPRISE',
+          monthlyMessageLimit: 999999999,
+          monthlyCost: 0,
+        },
+      });
+    } else {
+      await prisma.tenantPlan.create({
+        data: {
+          tenantId,
+          planType: 'ENTERPRISE',
+          monthlyMessageLimit: 999999999,
+          monthlyCost: 0,
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Tenant set to unlimited Enterprise plan',
+    });
+  } catch (error: any) {
+    console.error('Set plan error:', error);
+    res.status(500).json({ error: 'Failed to set plan: ' + error.message });
+  }
+});
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
