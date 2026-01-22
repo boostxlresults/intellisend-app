@@ -18,7 +18,15 @@ The platform is built on a modern tech stack featuring Node.js with TypeScript a
 - **Compliance System**: Automated features for TCPA compliance, including STOP word detection, suppression lists, quiet hours, consent management, pre-send validation, rate limiting, and A2P 10DLC guidance.
 - **AI Integration**:
     - **AI-Assisted Content Creation**: GPT-4o-mini for generating improved message content, suggesting replies, and intent classification.
-    - **AI Booking Agent**: An intelligent agent capable of qualifying leads, booking appointments via ServiceTitan, and managing conversation states. It includes intent classification, qualification scoring, tiered routing, and ServiceTitan customer search integration.
+    - **AI Booking Agent**: An intelligent agent capable of qualifying leads, booking appointments via ServiceTitan, and managing conversation states. It includes:
+      - Intent classification (OPT_OUT, INTERESTED, BOOK_YES, INFO_REQUEST, etc.)
+      - ServiceTitan customer search by phone - finds existing accounts
+      - Address confirmation for existing customers, address collection for new customers
+      - Real availability lookup from ServiceTitan Capacity API
+      - Time slot presentation ("I have a tech available: 1) Thursday 12-2 PM, 2) Friday 10 AM-12 PM")
+      - Customer selection handling (reply 1, 2, or 3)
+      - Automatic job/appointment creation with selected time slot
+      - Full conversation history context (50 messages including campaign sends)
     - **Per-Tenant AI Personas**: Each tenant can configure custom AI personalities with system prompts. Includes 4 starter templates (Professional, Friendly, Concise, Home Services Expert) or custom prompts.
     - **Per-Tenant Knowledge Base**: Tenants can upload articles about their company, services, pricing, FAQs. The AI uses this information when responding to customers.
 - **Campaign & Automation Features**:

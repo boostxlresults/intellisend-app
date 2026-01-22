@@ -224,6 +224,7 @@ export async function createServiceTitanJob(
     summary: string;
     preferredTime?: string;
     campaignId?: string;
+    selectedSlot?: AvailabilitySlot;
   }
 ): Promise<{ jobId: number; appointmentId: number } | null> {
   const config = await prisma.serviceTitanConfig.findUnique({
@@ -242,8 +243,23 @@ export async function createServiceTitanJob(
       'Content-Type': 'application/json',
     };
 
-    const startTime = getNextAvailableSlot(data.preferredTime);
-    const endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+    let startTime: Date;
+    let endTime: Date;
+    let arrivalWindowStart: Date;
+    let arrivalWindowEnd: Date;
+    
+    if (data.selectedSlot) {
+      startTime = new Date(`${data.selectedSlot.date}T${data.selectedSlot.startTime}:00`);
+      endTime = new Date(`${data.selectedSlot.date}T${data.selectedSlot.endTime}:00`);
+      arrivalWindowStart = startTime;
+      arrivalWindowEnd = endTime;
+      console.log(`[ServiceTitan] Using selected slot: ${data.selectedSlot.displayText}`);
+    } else {
+      startTime = getNextAvailableSlot(data.preferredTime);
+      endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+      arrivalWindowStart = startTime;
+      arrivalWindowEnd = new Date(startTime.getTime() + 60 * 60 * 1000);
+    }
 
     const jobPayload = {
       customerId: data.customerId,
@@ -257,8 +273,8 @@ export async function createServiceTitanJob(
         {
           start: startTime.toISOString(),
           end: endTime.toISOString(),
-          arrivalWindowStart: startTime.toISOString(),
-          arrivalWindowEnd: new Date(startTime.getTime() + 60 * 60 * 1000).toISOString(),
+          arrivalWindowStart: arrivalWindowStart.toISOString(),
+          arrivalWindowEnd: arrivalWindowEnd.toISOString(),
         },
       ],
     };
@@ -316,4 +332,153 @@ function getNextAvailableSlot(preference?: string): Date {
   }
   
   return tomorrow;
+}
+
+export interface AvailabilitySlot {
+  date: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  arrivalWindow: string;
+  displayText: string;
+}
+
+export async function getServiceTitanAvailability(
+  tenantId: string,
+  options: {
+    businessUnitId?: string;
+    jobTypeId?: string;
+    daysAhead?: number;
+    maxSlots?: number;
+  } = {}
+): Promise<AvailabilitySlot[]> {
+  const config = await prisma.serviceTitanConfig.findUnique({
+    where: { tenantId },
+  });
+
+  if (!config || !config.enabled) {
+    return generateFallbackSlots(options.maxSlots || 5);
+  }
+
+  try {
+    const token = await getServiceTitanToken(config);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'ST-App-Key': config.appKey,
+      'Content-Type': 'application/json',
+    };
+
+    const daysAhead = options.daysAhead || 7;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1);
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + daysAhead);
+
+    const capacityUrl = `${config.tenantApiBaseUrl}/dispatch/v2/tenant/${config.serviceTitanTenantId}/capacity?` + 
+      `startsOnOrAfter=${startDate.toISOString().split('T')[0]}` +
+      `&endsOnOrBefore=${endDate.toISOString().split('T')[0]}` +
+      (options.businessUnitId ? `&businessUnitId=${options.businessUnitId}` : '');
+
+    const capacityResponse = await fetch(capacityUrl, { headers });
+    
+    if (!capacityResponse.ok) {
+      console.error('[ServiceTitan] Capacity API error:', capacityResponse.status, await capacityResponse.text());
+      return generateFallbackSlots(options.maxSlots || 5);
+    }
+
+    const capacityData = await capacityResponse.json() as { 
+      data?: Array<{
+        date: string;
+        businessUnitId: number;
+        capacity: number;
+        availability: number;
+      }> 
+    };
+
+    if (!capacityData.data || capacityData.data.length === 0) {
+      return generateFallbackSlots(options.maxSlots || 5);
+    }
+
+    const availableDays = capacityData.data
+      .filter(d => d.availability > 0)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, options.maxSlots || 5);
+
+    const slots: AvailabilitySlot[] = [];
+    const timeWindows = [
+      { start: '08:00', end: '10:00', label: '8-10 AM' },
+      { start: '10:00', end: '12:00', label: '10 AM-12 PM' },
+      { start: '12:00', end: '14:00', label: '12-2 PM' },
+      { start: '14:00', end: '16:00', label: '2-4 PM' },
+    ];
+
+    for (const day of availableDays) {
+      const date = new Date(day.date + 'T12:00:00');
+      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      
+      const windowIndex = slots.length % timeWindows.length;
+      const window = timeWindows[windowIndex];
+      
+      slots.push({
+        date: day.date,
+        dayOfWeek,
+        startTime: window.start,
+        endTime: window.end,
+        arrivalWindow: window.label,
+        displayText: `${dayOfWeek} ${dateStr}, ${window.label}`,
+      });
+    }
+
+    console.log(`[ServiceTitan] Found ${slots.length} availability slots for tenant ${tenantId}`);
+    return slots;
+
+  } catch (error) {
+    console.error('[ServiceTitan] Availability lookup error:', error);
+    return generateFallbackSlots(options.maxSlots || 5);
+  }
+}
+
+function generateFallbackSlots(count: number): AvailabilitySlot[] {
+  const slots: AvailabilitySlot[] = [];
+  const timeWindows = [
+    { start: '09:00', end: '11:00', label: '9-11 AM' },
+    { start: '11:00', end: '13:00', label: '11 AM-1 PM' },
+    { start: '13:00', end: '15:00', label: '1-3 PM' },
+    { start: '15:00', end: '17:00', label: '3-5 PM' },
+  ];
+
+  let dayOffset = 1;
+  for (let i = 0; i < count; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() + dayOffset);
+    
+    if (date.getDay() === 0) {
+      date.setDate(date.getDate() + 1);
+      dayOffset++;
+    }
+    
+    const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dateISO = date.toISOString().split('T')[0];
+    const window = timeWindows[i % timeWindows.length];
+    
+    slots.push({
+      date: dateISO,
+      dayOfWeek,
+      startTime: window.start,
+      endTime: window.end,
+      arrivalWindow: window.label,
+      displayText: `${dayOfWeek} ${dateStr}, ${window.label}`,
+    });
+    
+    if ((i + 1) % 2 === 0) dayOffset++;
+  }
+  
+  return slots;
+}
+
+export function formatSlotsForSMS(slots: AvailabilitySlot[], maxToShow: number = 3): string {
+  const slotsToShow = slots.slice(0, maxToShow);
+  return slotsToShow.map((slot, i) => `${i + 1}) ${slot.displayText}`).join('\n');
 }

@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { prisma } from '../../index';
 import { classifyIntent, CustomerIntent } from './intentClassifier';
-import { searchServiceTitanCustomer, createServiceTitanCustomer, createServiceTitanJob } from './serviceTitanSearch';
+import { searchServiceTitanCustomer, createServiceTitanCustomer, createServiceTitanJob, getServiceTitanAvailability, formatSlotsForSMS, AvailabilitySlot } from './serviceTitanSearch';
 import { createBookingFromInboundSms, CreateBookingFromInboundSmsOptions } from '../serviceTitanClient';
 import { buildConversationSummary } from '../conversationSummary';
 import { getActivePersonaForTenant, getKnowledgeSnippetsForTenant } from '../../ai/aiEngine';
@@ -77,7 +77,7 @@ export async function handleInboundMessage(
   const messages = await prisma.message.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
-    take: 20,
+    take: 50,
   });
 
   const conversationHistory = messages.map(m => ({
@@ -118,6 +118,10 @@ export async function handleInboundMessage(
       data: { preferredTimeSlot: classification.extractedData.preferredTime },
     });
     session.preferredTimeSlot = classification.extractedData.preferredTime;
+  }
+
+  if (session.state === 'PROPOSING_TIMES' && session.availableSlots) {
+    return await handleTimeSlotSelection(session, config, tenant, contact, conversationHistory);
   }
 
   switch (classification.intent) {
@@ -224,27 +228,13 @@ async function handleBookingIntent(
   intent: CustomerIntent,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
-  const hasAddress = !!session.confirmedAddress;
-  const hasName = !!session.confirmedName || !!(contact.firstName && contact.lastName);
-
-  if (!hasAddress) {
-    const askAddressResponse = await generateResponse(
-      tenant,
-      contact,
-      session,
-      'Customer wants to book. Ask for their service address in a friendly way.',
-      conversationHistory
-    );
-    await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
-    return {
-      shouldRespond: true,
-      responseText: askAddressResponse,
-      newState: 'QUALIFYING',
-    };
+  
+  if (session.state === 'PROPOSING_TIMES' && session.availableSlots) {
+    return await handleTimeSlotSelection(session, config, tenant, contact, conversationHistory);
   }
-
+  
   await updateSessionState(session.id, 'MATCHING_ST_RECORDS', 'PENDING');
-
+  
   const stSearch = await searchServiceTitanCustomer(
     session.tenantId,
     contact.phone,
@@ -252,24 +242,218 @@ async function handleBookingIntent(
     session.confirmedAddress
   );
 
-  let qualificationScore = session.qualificationScore;
-  qualificationScore += hasAddress ? 30 : 0;
-  qualificationScore += hasName ? 20 : 0;
-  qualificationScore += intent === 'BOOK_YES' ? 30 : 15;
-  qualificationScore += stSearch.found ? 10 : 0;
+  if (stSearch.found && stSearch.exactMatch) {
+    const customer = stSearch.customers[0];
+    const location = stSearch.locations.find(l => l.id === stSearch.exactMatch?.locationId) || stSearch.locations[0];
+    
+    await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: {
+        stCustomerId: String(customer.id),
+        stLocationId: location ? String(location.id) : undefined,
+        confirmedName: customer.name,
+      },
+    });
+    
+    const needsAddressConfirmation = !session.confirmedAddress || 
+      (session.state !== 'PROPOSING_TIMES' && session.state !== 'BOOKING_JOB');
+    
+    if (location && needsAddressConfirmation) {
+      const addressStr = location.address 
+        ? `${location.address.street}, ${location.address.city}`
+        : 'your address on file';
+      
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: { confirmedAddress: location?.address?.street },
+      });
+      
+      const confirmAddressResponse = await generateResponse(
+        tenant, contact, session,
+        `Great news - found their account! Ask them to confirm if "${addressStr}" is still their correct service address for this visit, or if they need service at a different location. Just need a quick yes or the new address.`,
+        conversationHistory
+      );
+      
+      await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
+      return {
+        shouldRespond: true,
+        responseText: confirmAddressResponse,
+        newState: 'QUALIFYING',
+      };
+    }
+    
+    return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
+    
+  } else {
+    if (!session.confirmedAddress) {
+      const askAddressResponse = await generateResponse(
+        tenant, contact, session,
+        "Customer is new to our system. Ask for their full service address including street, city, state, and zip so we can set them up and schedule service.",
+        conversationHistory
+      );
+      await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
+      return {
+        shouldRespond: true,
+        responseText: askAddressResponse,
+        newState: 'QUALIFYING',
+      };
+    }
+    
+    await updateSessionState(session.id, 'CREATING_ST_CUSTOMER', 'PENDING');
+    
+    const addressParts = parseAddress(session.confirmedAddress || '');
+    const createResult = await createServiceTitanCustomer(session.tenantId, {
+      name: session.confirmedName || `${contact.firstName} ${contact.lastName}`.trim() || 'Customer',
+      phone: contact.phone,
+      email: session.confirmedEmail,
+      address: addressParts,
+    });
+
+    if (createResult) {
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: {
+          stCustomerId: String(createResult.customerId),
+          stLocationId: String(createResult.locationId),
+        },
+      });
+    }
+    
+    return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
+  }
+}
+
+async function proposeAvailableTimes(
+  session: any,
+  config: any,
+  tenant: any,
+  contact: any,
+  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
+): Promise<AIAgentResponse> {
+  const slots = await getServiceTitanAvailability(session.tenantId, {
+    businessUnitId: config.defaultBusinessUnitId,
+    maxSlots: 4,
+    daysAhead: 7,
+  });
+  
+  if (slots.length === 0) {
+    return await handoffToCSR(session, tenant, contact, 'No available time slots found');
+  }
+  
+  const slotsJson = JSON.stringify(slots);
+  await prisma.aIAgentSession.update({
+    where: { id: session.id },
+    data: { 
+      availableSlots: slotsJson,
+      state: 'PROPOSING_TIMES',
+    },
+  });
+  
+  const slotOptions = formatSlotsForSMS(slots, 3);
+  const proposeResponse = `Great! I have a technician available:\n${slotOptions}\n\nWhich works best for you? Reply with 1, 2, or 3.`;
+  
+  return {
+    shouldRespond: true,
+    responseText: proposeResponse,
+    newState: 'PROPOSING_TIMES',
+  };
+}
+
+async function handleTimeSlotSelection(
+  session: any,
+  config: any,
+  tenant: any,
+  contact: any,
+  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
+): Promise<AIAgentResponse> {
+  const lastMessage = conversationHistory[conversationHistory.length - 1]?.body || '';
+  
+  const slotMatch = lastMessage.match(/\b([1-4])\b/);
+  if (!slotMatch) {
+    return {
+      shouldRespond: true,
+      responseText: "Please reply with 1, 2, or 3 to select your preferred time slot.",
+      newState: 'PROPOSING_TIMES',
+    };
+  }
+  
+  const selectedIndex = parseInt(slotMatch[1]) - 1;
+  const slots: AvailabilitySlot[] = JSON.parse(session.availableSlots || '[]');
+  
+  if (selectedIndex < 0 || selectedIndex >= slots.length) {
+    return {
+      shouldRespond: true,
+      responseText: "Please reply with a valid option number (1, 2, or 3).",
+      newState: 'PROPOSING_TIMES',
+    };
+  }
+  
+  const selectedSlot = slots[selectedIndex];
+  
+  await prisma.aIAgentSession.update({
+    where: { id: session.id },
+    data: { 
+      selectedSlotIndex: selectedIndex + 1,
+      preferredTimeSlot: selectedSlot.displayText,
+    },
+  });
+  
+  if (!config.defaultJobTypeId || !config.defaultBusinessUnitId) {
+    return await handoffToCSR(session, tenant, contact, `Customer selected ${selectedSlot.displayText}`);
+  }
+  
+  await updateSessionState(session.id, 'BOOKING_JOB', 'PENDING');
+  
+  const customerId = parseInt(session.stCustomerId || '0');
+  const locationId = parseInt(session.stLocationId || '0');
+  
+  if (!customerId || !locationId) {
+    return await handoffToCSR(session, tenant, contact, `Customer selected ${selectedSlot.displayText} - needs customer setup`);
+  }
+  
+  const startDateTime = new Date(`${selectedSlot.date}T${selectedSlot.startTime}:00`);
+  const endDateTime = new Date(`${selectedSlot.date}T${selectedSlot.endTime}:00`);
+  
+  const jobResult = await createServiceTitanJob(session.tenantId, {
+    customerId,
+    locationId,
+    jobTypeId: config.defaultJobTypeId!,
+    businessUnitId: config.defaultBusinessUnitId!,
+    summary: session.offerContext?.offerName || 'Service appointment booked via SMS AI Agent',
+    preferredTime: selectedSlot.displayText,
+    campaignId: config.defaultCampaignId,
+    selectedSlot: selectedSlot,
+  });
+
+  if (!jobResult) {
+    return await handoffToCSR(session, tenant, contact, `Customer selected ${selectedSlot.displayText} - job creation failed`);
+  }
 
   await prisma.aIAgentSession.update({
     where: { id: session.id },
-    data: { qualificationScore },
+    data: {
+      stJobId: String(jobResult.jobId),
+      stAppointmentId: String(jobResult.appointmentId),
+    },
   });
 
-  const isFullyQualified = qualificationScore >= config.qualificationThreshold;
+  await updateSessionState(session.id, 'CONFIRMED', 'FULL_BOOKING');
 
-  if (isFullyQualified && config.defaultJobTypeId && config.defaultBusinessUnitId) {
-    return await processFullBooking(session, config, tenant, contact, stSearch, conversationHistory);
-  } else {
-    return await processCSRBooking(session, tenant, contact, stSearch, conversationHistory);
-  }
+  const confirmResponse = await generateResponse(
+    tenant, contact, session,
+    `Appointment successfully booked for ${selectedSlot.displayText}! Confirm the booking and let them know a technician will arrive during that window. Thank them for choosing us.`,
+    conversationHistory
+  );
+
+  return {
+    shouldRespond: true,
+    responseText: confirmResponse,
+    newState: 'CONFIRMED',
+    outcome: 'FULL_BOOKING',
+    stCustomerId: String(customerId),
+    stLocationId: String(locationId),
+    stJobId: String(jobResult.jobId),
+  };
 }
 
 async function processFullBooking(
@@ -471,7 +655,6 @@ async function generateResponse(
     const knowledgeArticles = await getKnowledgeSnippetsForTenant(tenant.id, 10);
     
     const historyText = conversationHistory
-      .slice(-6)
       .map(m => `${m.role === 'business' ? 'Business' : 'Customer'}: ${m.body}`)
       .join('\n');
 

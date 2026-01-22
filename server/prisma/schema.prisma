@@ -786,6 +786,9 @@ model AIAgentSession {
   confirmedEmail      String?
   preferredTimeSlot   String?
   specialInstructions String?
+  serviceType         String?               // HVAC, Plumbing, Electrical
+  availableSlots      String?               // JSON array of AvailabilitySlot objects
+  selectedSlotIndex   Int?                  // Which slot customer selected (1-based)
   
   // ServiceTitan IDs once created/matched
   stCustomerId        String?
