@@ -572,8 +572,11 @@ export default function Settings() {
                 Add Persona
               </button>
             </div>
+            <p style={{ color: '#666', marginBottom: '12px', fontSize: '14px' }}>
+              Define how the AI communicates with your customers. The persona shapes tone, style, and behavior.
+            </p>
             {personas.length === 0 ? (
-              <p className="empty-state">No AI personas configured</p>
+              <p className="empty-state">No AI personas configured. Add one using a template or create your own.</p>
             ) : (
               <table className="table">
                 <thead>
@@ -594,6 +597,18 @@ export default function Settings() {
                 </tbody>
               </table>
             )}
+          </div>
+          
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3>AI Knowledge Base</h3>
+              <button className="btn btn-secondary btn-small" onClick={() => navigate('/knowledge-base')}>
+                Manage Articles
+              </button>
+            </div>
+            <p style={{ color: '#666', marginBottom: '12px', fontSize: '14px' }}>
+              Add articles about your company, services, pricing, FAQs, and more. The AI uses this information to answer customer questions accurately.
+            </p>
           </div>
 
           <div className="card">
@@ -1004,9 +1019,53 @@ export default function Settings() {
       
       {showAddPersona && (
         <div className="modal-overlay" onClick={() => setShowAddPersona(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <h3>Add AI Persona</h3>
             <form onSubmit={handleAddPersona}>
+              <div className="form-group">
+                <label>Start from Template (optional)</label>
+                <select 
+                  onChange={(e) => {
+                    const form = e.target.form;
+                    if (!form) return;
+                    const templates: Record<string, { name: string; description: string; systemPrompt: string }> = {
+                      professional: {
+                        name: 'Professional Assistant',
+                        description: 'Formal, business-focused communication style',
+                        systemPrompt: `You are a professional customer service representative. Communicate in a polished, business-appropriate tone. Be helpful, efficient, and courteous. Focus on providing clear information and solutions. Always maintain a respectful, formal demeanor while being warm and approachable.`
+                      },
+                      friendly: {
+                        name: 'Friendly Helper',
+                        description: 'Warm, conversational, and approachable style',
+                        systemPrompt: `You are a friendly, warm customer service representative. Use a conversational, approachable tone that makes customers feel welcome. Be personable and genuine while remaining helpful. Use casual language when appropriate but stay professional. Show enthusiasm and care for helping customers.`
+                      },
+                      concise: {
+                        name: 'Quick & Direct',
+                        description: 'Brief, to-the-point responses',
+                        systemPrompt: `You are an efficient, direct customer service representative. Keep responses brief and action-oriented. Get straight to the point while remaining polite. Focus on answering questions and solving problems quickly. Avoid unnecessary filler words or lengthy explanations unless needed.`
+                      },
+                      homeservices: {
+                        name: 'Home Services Expert',
+                        description: 'Specialized for HVAC, plumbing, electrical businesses',
+                        systemPrompt: `You are a knowledgeable home services assistant specializing in HVAC, plumbing, and electrical services. Be helpful in understanding customer issues, qualifying service needs, and scheduling appointments. Show empathy for home emergencies. Ask clarifying questions to understand the issue. Provide helpful tips when appropriate but always recommend professional service for complex issues.`
+                      }
+                    };
+                    if (e.target.value && templates[e.target.value]) {
+                      const t = templates[e.target.value];
+                      (form.elements.namedItem('name') as HTMLInputElement).value = t.name;
+                      (form.elements.namedItem('description') as HTMLInputElement).value = t.description;
+                      (form.elements.namedItem('systemPrompt') as HTMLTextAreaElement).value = t.systemPrompt;
+                    }
+                  }}
+                  style={{ marginBottom: '10px' }}
+                >
+                  <option value="">-- Choose a template or write your own --</option>
+                  <option value="professional">Professional Assistant</option>
+                  <option value="friendly">Friendly Helper</option>
+                  <option value="concise">Quick & Direct</option>
+                  <option value="homeservices">Home Services Expert</option>
+                </select>
+              </div>
               <div className="form-group">
                 <label>Name *</label>
                 <input type="text" name="name" required placeholder="e.g., Sales, Support" />
@@ -1017,7 +1076,15 @@ export default function Settings() {
               </div>
               <div className="form-group">
                 <label>System Prompt *</label>
-                <textarea name="systemPrompt" required placeholder="You are a helpful assistant for..." />
+                <textarea 
+                  name="systemPrompt" 
+                  required 
+                  placeholder="You are a helpful assistant for..."
+                  style={{ minHeight: '150px' }}
+                />
+                <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+                  This is the core instruction that shapes how the AI responds. Be specific about tone, behavior, and any special instructions.
+                </small>
               </div>
               <div className="form-group checkbox-group">
                 <input type="checkbox" name="canAutoReply" id="canAutoReply" />

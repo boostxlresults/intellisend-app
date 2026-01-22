@@ -4,6 +4,7 @@ import { classifyIntent, CustomerIntent } from './intentClassifier';
 import { searchServiceTitanCustomer, createServiceTitanCustomer, createServiceTitanJob } from './serviceTitanSearch';
 import { createBookingFromInboundSms, CreateBookingFromInboundSmsOptions } from '../serviceTitanClient';
 import { buildConversationSummary } from '../conversationSummary';
+import { getActivePersonaForTenant, getKnowledgeSnippetsForTenant } from '../../ai/aiEngine';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -466,14 +467,34 @@ async function generateResponse(
   }
 
   try {
+    const persona = await getActivePersonaForTenant(tenant.id);
+    const knowledgeArticles = await getKnowledgeSnippetsForTenant(tenant.id, 10);
+    
     const historyText = conversationHistory
       .slice(-6)
       .map(m => `${m.role === 'business' ? 'Business' : 'Customer'}: ${m.body}`)
       .join('\n');
 
-    const prompt = `You are an AI assistant for ${tenant.publicName || tenant.name}, a home services company.
+    let knowledgeContext = '';
+    if (knowledgeArticles.length > 0) {
+      knowledgeContext = `\n\nKNOWLEDGE BASE (Use this information to answer questions accurately):\n${knowledgeArticles.map(a => `### ${a.title}\n${a.content}`).join('\n\n')}`;
+    }
 
-CONTEXT:
+    const systemPrompt = `${persona.systemPrompt}
+
+You are responding on behalf of ${tenant.publicName || tenant.name}.
+${knowledgeContext}
+
+RULES:
+1. Keep response under 160 characters (SMS limit)
+2. Be friendly and professional
+3. Use the customer's first name if known
+4. Never mention you're an AI
+5. Don't include "Reply STOP to unsubscribe" - it's added automatically
+6. End with a clear next step or question when appropriate
+7. Use the knowledge base to provide accurate company-specific information`;
+
+    const userPrompt = `CONTEXT:
 - Customer Name: ${contact.firstName || 'Customer'}
 - Company: ${tenant.publicName || tenant.name}
 ${session.offerContext ? `- Current Offer: ${session.offerContext.offerName} ${session.offerContext.price ? `at ${session.offerContext.price}` : ''}` : ''}
@@ -483,19 +504,14 @@ ${historyText}
 
 INSTRUCTION: ${instruction}
 
-RULES:
-1. Keep response under 160 characters (SMS limit)
-2. Be friendly and professional
-3. Use the customer's first name if known
-4. Never mention you're an AI
-5. Don't include "Reply STOP to unsubscribe" - it's added automatically
-6. End with a clear next step or question when appropriate
-
 Write ONLY the SMS message text, nothing else:`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
       temperature: 0.7,
       max_tokens: 100,
     });
