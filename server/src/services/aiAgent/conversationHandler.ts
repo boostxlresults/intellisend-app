@@ -934,7 +934,11 @@ async function handoffToCSR(
   }
 
   // Send email notification as backup (especially important if ST booking failed)
-  if (tenant.notificationEmail) {
+  const tenantSettings = await prisma.tenantSettings.findUnique({
+    where: { tenantId: session.tenantId },
+  });
+  
+  if (tenantSettings?.notificationEmail) {
     try {
       const messages = await prisma.message.findMany({
         where: { conversationId: session.conversationId },
@@ -945,7 +949,7 @@ async function handoffToCSR(
       const conversationUrl = `https://app.intellisend.net/conversations/${session.conversationId}`;
       
       await sendReplyNotification({
-        toEmail: tenant.notificationEmail,
+        toEmail: tenantSettings.notificationEmail,
         tenantName: tenant.name,
         contactName: `${contact.firstName} ${contact.lastName}`.trim() || 'Customer',
         contactPhone: contact.phone,
