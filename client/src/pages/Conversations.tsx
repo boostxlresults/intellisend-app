@@ -45,6 +45,23 @@ export default function Conversations() {
     fetchConversations();
   }, [selectedTenant, statusFilter, search]);
 
+  // Auto-refresh conversations list every 10 seconds (only when not actively searching/interacting)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Don't refresh while modal is open, loading, or creating
+      if (selectedTenant && !loading && !showNewModal && !creating) {
+        api.getConversations(selectedTenant.id, {
+          status: statusFilter || undefined,
+          search: search || undefined,
+        }).then(data => {
+          setConversations(data);
+        }).catch(() => {});
+      }
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [selectedTenant, statusFilter, search, loading, showNewModal, creating]);
+
   const handleOpenNewModal = () => {
     fetchContacts();
     setShowNewModal(true);

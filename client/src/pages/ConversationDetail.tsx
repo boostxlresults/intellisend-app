@@ -32,6 +32,27 @@ export default function ConversationDetail() {
     fetchConversation();
   }, [selectedTenant, conversationId]);
 
+  // Auto-refresh every 5 seconds to show new messages (including AI responses)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (selectedTenant && conversationId && !sending && !loading) {
+        api.getConversation(selectedTenant.id, conversationId).then(data => {
+          // Always update - compare by last message timestamp or count
+          const currentLastTime = conversation?.messages?.slice(-1)[0]?.createdAt;
+          const newLastTime = data.messages?.slice(-1)[0]?.createdAt;
+          const currentCount = conversation?.messages?.length || 0;
+          const newCount = data.messages?.length || 0;
+          
+          if (newCount !== currentCount || newLastTime !== currentLastTime) {
+            setConversation(data);
+          }
+        }).catch(() => {});
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [selectedTenant, conversationId, conversation?.messages, sending, loading]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages]);
