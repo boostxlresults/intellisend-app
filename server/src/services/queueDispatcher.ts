@@ -105,6 +105,7 @@ async function processOutboundQueue() {
             toNumber: queueItem.phone,
             body: queueItem.body,
             mediaUrl: queueItem.mediaUrl || undefined,
+            skipOptOutFooter: true, // Opt-out footer already added when queued
           });
 
           if (smsResult.rateLimited) {
