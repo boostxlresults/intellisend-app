@@ -303,4 +303,54 @@ router.get('/:tenantId/contacts/:contactId', async (req, res) => {
   }
 });
 
+router.patch('/:tenantId/contacts/:contactId', async (req, res) => {
+  try {
+    const { tenantId, contactId } = req.params;
+    const { aiAgentEnabled, firstName, lastName, email, address, city, state, zip, customerType } = req.body;
+    
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, tenantId },
+    });
+    
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    
+    const updateData: any = {};
+    if (aiAgentEnabled !== undefined) updateData.aiAgentEnabled = aiAgentEnabled;
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (email !== undefined) updateData.email = email;
+    if (address !== undefined) updateData.address = address;
+    if (city !== undefined) updateData.city = city;
+    if (state !== undefined) updateData.state = state;
+    if (zip !== undefined) updateData.zip = zip;
+    if (customerType !== undefined) updateData.customerType = customerType;
+    
+    const updated = await prisma.contact.update({
+      where: { id: contactId },
+      data: updateData,
+      include: {
+        tags: {
+          include: { tag: true },
+        },
+      },
+    });
+    
+    const formattedContact = {
+      ...updated,
+      tags: updated.tags.map(ct => ({
+        id: ct.tagId,
+        name: ct.tag.name,
+        color: ct.tag.color,
+      })),
+    };
+    
+    res.json(formattedContact);
+  } catch (error: any) {
+    console.error('Error updating contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

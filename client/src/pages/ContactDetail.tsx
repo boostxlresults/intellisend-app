@@ -21,6 +21,7 @@ export default function ContactDetail() {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
+  const [togglingAI, setTogglingAI] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -144,6 +145,21 @@ export default function ContactDetail() {
     }
   };
 
+  const handleToggleAIAgent = async () => {
+    if (!selectedTenant || !contactId || !contact) return;
+    setTogglingAI(true);
+    try {
+      const updated = await api.updateContact(selectedTenant.id, contactId, {
+        aiAgentEnabled: !contact.aiAgentEnabled,
+      });
+      setContact({ ...contact, aiAgentEnabled: updated.aiAgentEnabled });
+    } catch (error) {
+      console.error('Failed to toggle AI agent:', error);
+    } finally {
+      setTogglingAI(false);
+    }
+  };
+
   if (loading) {
     return <p>Loading contact...</p>;
   }
@@ -178,6 +194,21 @@ export default function ContactDetail() {
             </div>
             <div>
               <strong>Type:</strong> {contact.customerType}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <strong>AI Agent:</strong>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={contact.aiAgentEnabled !== false}
+                  onChange={handleToggleAIAgent}
+                  disabled={togglingAI}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '14px', color: contact.aiAgentEnabled !== false ? '#48bb78' : '#a0aec0' }}>
+                  {contact.aiAgentEnabled !== false ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
             </div>
             {contact.address && (
               <div>

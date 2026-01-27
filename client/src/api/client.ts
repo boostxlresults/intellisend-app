@@ -37,6 +37,7 @@ export interface Contact {
   zip?: string;
   leadSource?: string;
   customerType: string;
+  aiAgentEnabled?: boolean;
   tags?: ContactTag[];
   conversations?: Conversation[];
 }
@@ -54,6 +55,7 @@ export interface Conversation {
   status: 'OPEN' | 'CLOSED';
   lastMessageAt: string;
   needsAttention?: boolean;
+  aiAgentEnabled?: boolean;
   serviceTitanBookingId?: string;
   serviceTitanBookingCreatedAt?: string;
   contact?: Contact;
@@ -397,6 +399,18 @@ export const api = {
   suggestReplies: (tenantId: string, conversationId: string) =>
     request<{ suggestions: { text: string }[] }>(`${API_BASE}/tenants/${tenantId}/conversations/${conversationId}/suggest`, {
       method: 'POST',
+    }),
+  
+  updateConversation: (tenantId: string, conversationId: string, data: { status?: string; aiAgentEnabled?: boolean }) =>
+    request<Conversation>(`${API_BASE}/tenants/${tenantId}/conversations/${conversationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  
+  updateContact: (tenantId: string, contactId: string, data: { aiAgentEnabled?: boolean; firstName?: string; lastName?: string; email?: string; address?: string; city?: string; state?: string; zip?: string; customerType?: string }) =>
+    request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
   
   getSuppressions: (tenantId: string) =>

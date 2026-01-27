@@ -43,7 +43,17 @@ export async function handleInboundMessage(
     where: { id: contactId },
   });
 
-  if (!tenant || !contact) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+  });
+
+  if (!tenant || !contact || !conversation) {
+    return null;
+  }
+
+  // Check if AI agent is disabled at contact or conversation level
+  if (contact.aiAgentEnabled === false || conversation.aiAgentEnabled === false) {
+    console.log(`[AI Agent] Disabled for contact ${contactId} or conversation ${conversationId}`);
     return null;
   }
 

@@ -12,6 +12,7 @@ export default function ConversationDetail() {
   const [sending, setSending] = useState(false);
   const [suggestions, setSuggestions] = useState<{ text: string }[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [togglingAI, setTogglingAI] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchConversation = async () => {
@@ -65,6 +66,21 @@ export default function ConversationDetail() {
     }
   };
 
+  const handleToggleAIAgent = async () => {
+    if (!selectedTenant || !conversationId || !conversation) return;
+    setTogglingAI(true);
+    try {
+      const updated = await api.updateConversation(selectedTenant.id, conversationId, {
+        aiAgentEnabled: !conversation.aiAgentEnabled,
+      });
+      setConversation({ ...conversation, aiAgentEnabled: updated.aiAgentEnabled });
+    } catch (error) {
+      console.error('Failed to toggle AI agent:', error);
+    } finally {
+      setTogglingAI(false);
+    }
+  };
+
   if (loading) {
     return <p>Loading conversation...</p>;
   }
@@ -87,7 +103,21 @@ export default function ConversationDetail() {
             </span>
           </h2>
         </div>
-        <span className={`status-badge ${conversation.status.toLowerCase()}`}>{conversation.status}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={conversation.aiAgentEnabled !== false}
+              onChange={handleToggleAIAgent}
+              disabled={togglingAI}
+              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '14px', color: conversation.aiAgentEnabled !== false ? '#48bb78' : '#a0aec0' }}>
+              AI Agent {conversation.aiAgentEnabled !== false ? 'ON' : 'OFF'}
+            </span>
+          </label>
+          <span className={`status-badge ${conversation.status.toLowerCase()}`}>{conversation.status}</span>
+        </div>
       </div>
       
       <div className="message-list" style={{ flex: 1 }}>

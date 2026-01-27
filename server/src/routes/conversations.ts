@@ -314,7 +314,7 @@ router.post('/:tenantId/conversations/:conversationId/ai-suggestions', async (re
 router.patch('/:tenantId/conversations/:conversationId', async (req, res) => {
   try {
     const { tenantId, conversationId } = req.params;
-    const { status } = req.body;
+    const { status, aiAgentEnabled } = req.body;
     
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, tenantId },
@@ -324,9 +324,14 @@ router.patch('/:tenantId/conversations/:conversationId', async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
     
+    const updateData: any = {};
+    if (status !== undefined) updateData.status = status;
+    if (aiAgentEnabled !== undefined) updateData.aiAgentEnabled = aiAgentEnabled;
+    
     const updated = await prisma.conversation.update({
       where: { id: conversationId },
-      data: { status },
+      data: updateData,
+      include: { contact: true },
     });
     
     res.json(updated);

@@ -150,6 +150,7 @@ model Contact {
   consentTimestamp DateTime?
   lastContactedAt  DateTime?
   lastRepliedAt    DateTime?
+  aiAgentEnabled   Boolean       @default(true)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -301,6 +302,7 @@ model Conversation {
   status        ConversationStatus @default(OPEN)
   lastMessageAt DateTime           @default(now())
   needsAttention Boolean           @default(false)
+  aiAgentEnabled Boolean           @default(true)
   serviceTitanBookingId       String?
   serviceTitanBookingCreatedAt DateTime?
   createdAt     DateTime           @default(now())
