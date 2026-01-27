@@ -288,8 +288,12 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         
         const fromNumber = sendContext?.defaultFromNumber?.phoneNumber || To;
         
-        // Add opt-out footer
-        const messageWithFooter = `${aiResponse.responseText}\n\nReply STOP to unsubscribe.`;
+        // Add opt-out footer only if not already present
+        const hasOptOut = aiResponse.responseText.toLowerCase().includes('stop to unsubscribe') || 
+                          aiResponse.responseText.toLowerCase().includes('reply stop');
+        const messageWithFooter = hasOptOut 
+          ? aiResponse.responseText 
+          : `${aiResponse.responseText}\n\nReply STOP to unsubscribe.`;
         
         // Queue the AI response for sending
         await prisma.outboundMessageQueue.create({

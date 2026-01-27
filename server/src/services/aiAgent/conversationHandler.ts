@@ -956,7 +956,9 @@ RULES:
 4. Don't include "Reply STOP" - it's added automatically
 5. End with a clear, simple next step or question
 6. Use the knowledge base for accurate company info
-7. Match the customer's energy - if they're excited, be excited back`;
+7. Match the customer's energy - if they're excited, be excited back
+8. ALWAYS reference the conversation context - if replying to "who is this?", mention what the previous message was about
+9. Be specific about what you're helping with based on the conversation history`;
 
     const userPrompt = `CONTEXT:
 - Customer Name: ${contact.firstName || 'Customer'}
