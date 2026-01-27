@@ -58,7 +58,7 @@ app.set('trust proxy', 1);
 app.use(session({
   store: new PgSession({
     conString: process.env.DATABASE_URL,
-    tableName: 'user_sessions',
+    tableName: 'sessions',
     createTableIfMissing: true,
   }),
   secret: process.env.SESSION_SECRET || 'intellisend-dev-secret-change-in-production',
