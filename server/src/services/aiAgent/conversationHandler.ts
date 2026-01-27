@@ -266,11 +266,12 @@ async function handleBookingIntent(
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
   
-  if (session.state === 'PROPOSING_TIMES' && session.availableSlots) {
-    return await handleTimeSlotSelection(session, config, tenant, contact, conversationHistory);
-  }
-  
-  await updateSessionState(session.id, 'MATCHING_ST_RECORDS', 'PENDING');
+  try {
+    if (session.state === 'PROPOSING_TIMES' && session.availableSlots) {
+      return await handleTimeSlotSelection(session, config, tenant, contact, conversationHistory);
+    }
+    
+    await updateSessionState(session.id, 'MATCHING_ST_RECORDS', 'PENDING');
   
   // STEP 1: Search by phone number first (most reliable)
   const phoneSearch = await searchServiceTitanCustomer(
@@ -486,6 +487,10 @@ async function handleBookingIntent(
   }
   
   return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
+  } catch (error) {
+    console.error('Error in handleBookingIntent:', error);
+    return await handoffToCSR(session, tenant, contact, 'ServiceTitan API error during booking flow');
+  }
 }
 
 async function proposeAvailableTimes(
@@ -495,33 +500,38 @@ async function proposeAvailableTimes(
   contact: any,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
-  const slots = await getServiceTitanAvailability(session.tenantId, {
-    businessUnitId: config.defaultBusinessUnitId,
-    maxSlots: 4,
-    daysAhead: 7,
-  });
-  
-  if (slots.length === 0) {
-    return await handoffToCSR(session, tenant, contact, 'No available time slots found');
+  try {
+    const slots = await getServiceTitanAvailability(session.tenantId, {
+      businessUnitId: config.defaultBusinessUnitId,
+      maxSlots: 4,
+      daysAhead: 7,
+    });
+    
+    if (slots.length === 0) {
+      return await handoffToCSR(session, tenant, contact, 'No available time slots found');
+    }
+    
+    const slotsJson = JSON.stringify(slots);
+    await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: { 
+        availableSlots: slotsJson,
+        state: 'PROPOSING_TIMES',
+      },
+    });
+    
+    const slotOptions = formatSlotsForSMS(slots, 3);
+    const proposeResponse = `Great! I have a technician available:\n${slotOptions}\n\nWhich works best for you? Reply with 1, 2, or 3.`;
+    
+    return {
+      shouldRespond: true,
+      responseText: proposeResponse,
+      newState: 'PROPOSING_TIMES',
+    };
+  } catch (error) {
+    console.error('Error in proposeAvailableTimes:', error);
+    return await handoffToCSR(session, tenant, contact, 'Error fetching available time slots');
   }
-  
-  const slotsJson = JSON.stringify(slots);
-  await prisma.aIAgentSession.update({
-    where: { id: session.id },
-    data: { 
-      availableSlots: slotsJson,
-      state: 'PROPOSING_TIMES',
-    },
-  });
-  
-  const slotOptions = formatSlotsForSMS(slots, 3);
-  const proposeResponse = `Great! I have a technician available:\n${slotOptions}\n\nWhich works best for you? Reply with 1, 2, or 3.`;
-  
-  return {
-    shouldRespond: true,
-    responseText: proposeResponse,
-    newState: 'PROPOSING_TIMES',
-  };
 }
 
 async function handleTimeSlotSelection(
@@ -531,9 +541,10 @@ async function handleTimeSlotSelection(
   contact: any,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
-  const lastMessage = conversationHistory[conversationHistory.length - 1]?.body || '';
-  
-  const slotMatch = lastMessage.match(/\b([1-4])\b/);
+  try {
+    const lastMessage = conversationHistory[conversationHistory.length - 1]?.body || '';
+    
+    const slotMatch = lastMessage.match(/\b([1-4])\b/);
   if (!slotMatch) {
     return {
       shouldRespond: true,
@@ -619,6 +630,10 @@ async function handleTimeSlotSelection(
     stLocationId: String(locationId),
     stJobId: String(jobResult.jobId),
   };
+  } catch (error) {
+    console.error('Error in handleTimeSlotSelection:', error);
+    return await handoffToCSR(session, tenant, contact, 'Error creating booking - please call customer');
+  }
 }
 
 async function processFullBooking(
