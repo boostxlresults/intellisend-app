@@ -296,6 +296,7 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
           data: {
             tenantId,
             contactId: contact.id,
+            conversationId: conversation.id,
             phone: From,
             body: messageWithFooter,
             fromNumber,

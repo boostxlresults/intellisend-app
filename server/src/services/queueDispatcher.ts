@@ -171,52 +171,53 @@ async function processOutboundQueue() {
               }
             }
 
-            if (queueItem.campaignId && queueItem.campaignStepId) {
-              let conversation = await prisma.conversation.findFirst({
-                where: {
-                  tenantId,
-                  contactId: queueItem.contactId,
-                  status: 'OPEN',
-                },
-              });
-
-              if (!conversation) {
-                conversation = await prisma.conversation.create({
-                  data: {
+            // Always save message to conversation (for campaigns, AI agent, and direct sends)
+            let conversation = queueItem.conversationId 
+              ? await prisma.conversation.findUnique({ where: { id: queueItem.conversationId } })
+              : await prisma.conversation.findFirst({
+                  where: {
                     tenantId,
                     contactId: queueItem.contactId,
                     status: 'OPEN',
                   },
                 });
-              }
 
-              await prisma.message.create({
+            if (!conversation) {
+              conversation = await prisma.conversation.create({
                 data: {
-                  conversationId: conversation.id,
                   tenantId,
                   contactId: queueItem.contactId,
-                  direction: 'OUTBOUND',
-                  channel: 'SMS',
-                  body: queueItem.body,
-                  fromNumber: queueItem.fromNumber,
-                  toNumber: queueItem.phone,
-                  twilioMessageSid: smsResult.messageSid,
-                  status: 'sent',
-                  campaignId: queueItem.campaignId,
-                  campaignStepId: queueItem.campaignStepId,
+                  status: 'OPEN',
                 },
               });
-
-              await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { lastMessageAt: new Date() },
-              });
-
-              await prisma.contact.update({
-                where: { id: queueItem.contactId },
-                data: { lastContactedAt: new Date() },
-              });
             }
+
+            await prisma.message.create({
+              data: {
+                conversationId: conversation.id,
+                tenantId,
+                contactId: queueItem.contactId,
+                direction: 'OUTBOUND',
+                channel: 'SMS',
+                body: queueItem.body,
+                fromNumber: queueItem.fromNumber,
+                toNumber: queueItem.phone,
+                twilioMessageSid: smsResult.messageSid,
+                status: 'sent',
+                campaignId: queueItem.campaignId,
+                campaignStepId: queueItem.campaignStepId,
+              },
+            });
+
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { lastMessageAt: new Date() },
+            });
+
+            await prisma.contact.update({
+              where: { id: queueItem.contactId },
+              data: { lastContactedAt: new Date() },
+            });
 
             console.log(`Queue: Sent SMS to ${queueItem.phone}`);
           } else {

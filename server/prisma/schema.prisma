@@ -460,6 +460,7 @@ model OutboundMessageQueue {
   campaignStepId String?
   variantId      String?             // A/B test variant
   sequenceEnrollmentStepId String?   // For sequence messages
+  conversationId String?             // For AI agent responses
   contactId      String
   phone          String
   body           String
