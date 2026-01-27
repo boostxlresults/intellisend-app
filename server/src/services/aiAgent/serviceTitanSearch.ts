@@ -34,7 +34,16 @@ interface CustomerSearchResult {
   exactMatch?: {
     customerId: number;
     locationId?: number;
+    matchedBy: 'phone' | 'address' | 'name';
+    confidence: 'high' | 'medium' | 'low';
   };
+  possibleMatches?: Array<{
+    customerId: number;
+    locationId?: number;
+    customerName: string;
+    address?: string;
+    matchedBy: 'address' | 'name';
+  }>;
 }
 
 export async function searchServiceTitanCustomer(
@@ -92,7 +101,11 @@ export async function searchServiceTitanCustomer(
     let exactMatch: CustomerSearchResult['exactMatch'] = undefined;
     
     if (customers.length === 1) {
-      exactMatch = { customerId: customers[0].id };
+      exactMatch = { 
+        customerId: customers[0].id,
+        matchedBy: 'phone',
+        confidence: 'high',
+      };
       if (allLocations.length === 1) {
         exactMatch.locationId = allLocations[0].id;
       }
@@ -108,6 +121,185 @@ export async function searchServiceTitanCustomer(
     console.error('ServiceTitan search error:', error);
     return { found: false, customers: [], locations: [] };
   }
+}
+
+export async function searchByAddress(
+  tenantId: string,
+  address: string
+): Promise<CustomerSearchResult> {
+  const config = await prisma.serviceTitanConfig.findUnique({
+    where: { tenantId },
+  });
+
+  if (!config || !config.enabled) {
+    return { found: false, customers: [], locations: [] };
+  }
+
+  try {
+    const token = await getServiceTitanToken(config);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'ST-App-Key': config.appKey,
+      'Content-Type': 'application/json',
+    };
+
+    const addressParts = parseAddressForSearch(address);
+    if (!addressParts.street) {
+      return { found: false, customers: [], locations: [] };
+    }
+
+    const searchParams = new URLSearchParams({ pageSize: '20' });
+    if (addressParts.street) {
+      searchParams.append('street', addressParts.street);
+    }
+    if (addressParts.city) {
+      searchParams.append('city', addressParts.city);
+    }
+    if (addressParts.zip) {
+      searchParams.append('zip', addressParts.zip);
+    }
+
+    const locationUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations?${searchParams.toString()}`;
+    const locationResponse = await fetch(locationUrl, { headers });
+
+    if (!locationResponse.ok) {
+      console.error('ST location search failed:', await locationResponse.text());
+      return { found: false, customers: [], locations: [] };
+    }
+
+    const locationData = await locationResponse.json() as { data?: STLocation[] };
+    const locations: STLocation[] = locationData.data || [];
+
+    if (locations.length === 0) {
+      return { found: false, customers: [], locations: [] };
+    }
+
+    const customerIds = [...new Set(locations.map(l => l.customerId))];
+    const customers: STCustomer[] = [];
+
+    for (const customerId of customerIds.slice(0, 5)) {
+      const customerUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers/${customerId}`;
+      const customerResponse = await fetch(customerUrl, { headers });
+      if (customerResponse.ok) {
+        const customer = await customerResponse.json() as STCustomer;
+        customers.push(customer);
+      }
+    }
+
+    const possibleMatches = locations.slice(0, 5).map(loc => {
+      const customer = customers.find(c => c.id === loc.customerId);
+      return {
+        customerId: loc.customerId,
+        locationId: loc.id,
+        customerName: customer?.name || 'Unknown',
+        address: loc.address ? `${loc.address.street}, ${loc.address.city}` : undefined,
+        matchedBy: 'address' as const,
+      };
+    });
+
+    let exactMatch: CustomerSearchResult['exactMatch'] = undefined;
+    if (locations.length === 1) {
+      exactMatch = {
+        customerId: locations[0].customerId,
+        locationId: locations[0].id,
+        matchedBy: 'address',
+        confidence: 'medium',
+      };
+    }
+
+    return {
+      found: true,
+      customers,
+      locations,
+      exactMatch,
+      possibleMatches,
+    };
+  } catch (error) {
+    console.error('ServiceTitan address search error:', error);
+    return { found: false, customers: [], locations: [] };
+  }
+}
+
+export async function searchByName(
+  tenantId: string,
+  name: string
+): Promise<CustomerSearchResult> {
+  const config = await prisma.serviceTitanConfig.findUnique({
+    where: { tenantId },
+  });
+
+  if (!config || !config.enabled) {
+    return { found: false, customers: [], locations: [] };
+  }
+
+  try {
+    const token = await getServiceTitanToken(config);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'ST-App-Key': config.appKey,
+      'Content-Type': 'application/json',
+    };
+
+    const customerUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers?name=${encodeURIComponent(name)}&pageSize=10`;
+    const customerResponse = await fetch(customerUrl, { headers });
+
+    if (!customerResponse.ok) {
+      console.error('ST name search failed:', await customerResponse.text());
+      return { found: false, customers: [], locations: [] };
+    }
+
+    const customerData = await customerResponse.json() as { data?: STCustomer[] };
+    const customers: STCustomer[] = customerData.data || [];
+
+    if (customers.length === 0) {
+      return { found: false, customers: [], locations: [] };
+    }
+
+    const allLocations: STLocation[] = [];
+    for (const customer of customers.slice(0, 3)) {
+      const locationUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations?customerId=${customer.id}&pageSize=5`;
+      const locationResponse = await fetch(locationUrl, { headers });
+      if (locationResponse.ok) {
+        const locationData = await locationResponse.json() as { data?: STLocation[] };
+        allLocations.push(...(locationData.data || []));
+      }
+    }
+
+    const possibleMatches = customers.slice(0, 5).map(customer => {
+      const location = allLocations.find(l => l.customerId === customer.id);
+      return {
+        customerId: customer.id,
+        locationId: location?.id,
+        customerName: customer.name,
+        address: location?.address ? `${location.address.street}, ${location.address.city}` : undefined,
+        matchedBy: 'name' as const,
+      };
+    });
+
+    return {
+      found: true,
+      customers,
+      locations: allLocations,
+      possibleMatches,
+    };
+  } catch (error) {
+    console.error('ServiceTitan name search error:', error);
+    return { found: false, customers: [], locations: [] };
+  }
+}
+
+function parseAddressForSearch(address: string): { street?: string; city?: string; state?: string; zip?: string } {
+  const zipMatch = address.match(/\b(\d{5})(?:-\d{4})?\b/);
+  const stateMatch = address.match(/\b([A-Z]{2})\b/);
+  
+  const parts = address.split(',').map(p => p.trim());
+  
+  return {
+    street: parts[0] || undefined,
+    city: parts[1]?.replace(/\b[A-Z]{2}\b/, '').replace(/\d{5}.*/, '').trim() || undefined,
+    state: stateMatch?.[1] || undefined,
+    zip: zipMatch?.[1] || undefined,
+  };
 }
 
 export async function createServiceTitanCustomer(

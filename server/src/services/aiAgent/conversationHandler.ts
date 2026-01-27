@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { prisma } from '../../index';
 import { classifyIntent, CustomerIntent } from './intentClassifier';
-import { searchServiceTitanCustomer, createServiceTitanCustomer, createServiceTitanJob, getServiceTitanAvailability, formatSlotsForSMS, AvailabilitySlot } from './serviceTitanSearch';
+import { searchServiceTitanCustomer, searchByAddress, searchByName, createServiceTitanCustomer, createServiceTitanJob, getServiceTitanAvailability, formatSlotsForSMS, AvailabilitySlot } from './serviceTitanSearch';
 import { createBookingFromInboundSms, CreateBookingFromInboundSmsOptions } from '../serviceTitanClient';
 import { buildConversationSummary } from '../conversationSummary';
 import { getActivePersonaForTenant, getKnowledgeSnippetsForTenant } from '../../ai/aiEngine';
@@ -119,6 +119,24 @@ export async function handleInboundMessage(
     });
     session.preferredTimeSlot = classification.extractedData.preferredTime;
   }
+  if (classification.extractedData.name) {
+    await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: { confirmedName: classification.extractedData.name },
+    });
+    session.confirmedName = classification.extractedData.name;
+  }
+
+  // Handle state-specific responses when user provides requested info
+  if (session.state === 'AWAITING_NAME' && session.confirmedName) {
+    // User provided their name - continue with booking flow
+    return await handleBookingIntent(session, config, tenant, contact, 'BOOK_YES', conversationHistory);
+  }
+  
+  if (session.state === 'COLLECTING_ADDRESS' && session.confirmedAddress) {
+    // User provided their address - continue with booking flow
+    return await handleBookingIntent(session, config, tenant, contact, 'BOOK_YES', conversationHistory);
+  }
 
   if (session.state === 'PROPOSING_TIMES' && session.availableSlots) {
     return await handleTimeSlotSelection(session, config, tenant, contact, conversationHistory);
@@ -190,6 +208,15 @@ export async function handleInboundMessage(
         conversationHistory
       );
 
+    case 'CALL_ME':
+      return await handleCallMeRequest(session, config, tenant, contact, conversationHistory);
+
+    case 'CONFIRM_YES':
+      return await handleIdentityConfirmation(session, config, tenant, contact, true, conversationHistory);
+
+    case 'CONFIRM_NO':
+      return await handleIdentityConfirmation(session, config, tenant, contact, false, conversationHistory);
+
     case 'RESCHEDULE':
       return await handoffToCSR(session, tenant, contact, 'Customer wants to reschedule');
 
@@ -235,16 +262,43 @@ async function handleBookingIntent(
   
   await updateSessionState(session.id, 'MATCHING_ST_RECORDS', 'PENDING');
   
-  const stSearch = await searchServiceTitanCustomer(
+  // STEP 1: Search by phone number first (most reliable)
+  const phoneSearch = await searchServiceTitanCustomer(
     session.tenantId,
     contact.phone,
     session.confirmedEmail,
     session.confirmedAddress
   );
 
-  if (stSearch.found && stSearch.exactMatch) {
-    const customer = stSearch.customers[0];
-    const location = stSearch.locations.find(l => l.id === stSearch.exactMatch?.locationId) || stSearch.locations[0];
+  if (phoneSearch.found && phoneSearch.customers.length > 0) {
+    // Found by phone - use first customer (phone is unique enough)
+    const customer = phoneSearch.customers[0];
+    const location = phoneSearch.locations.find(l => l.customerId === customer.id) || phoneSearch.locations[0];
+    
+    // If multiple customers found by phone, ask to confirm identity
+    if (phoneSearch.customers.length > 1 && session.state !== 'AWAITING_IDENTITY_CONFIRM') {
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: {
+          pendingMatchCustomerId: String(customer.id),
+          pendingMatchLocationId: location ? String(location.id) : undefined,
+          pendingMatchName: customer.name,
+          state: 'AWAITING_IDENTITY_CONFIRM',
+        },
+      });
+      
+      const confirmIdentityResponse = await generateResponse(
+        tenant, contact, session,
+        `I found an account for "${customer.name}" with this phone number. Is that you?`,
+        conversationHistory
+      );
+      
+      return {
+        shouldRespond: true,
+        responseText: confirmIdentityResponse,
+        newState: 'AWAITING_IDENTITY_CONFIRM',
+      };
+    }
     
     await prisma.aIAgentSession.update({
       where: { id: session.id },
@@ -255,72 +309,173 @@ async function handleBookingIntent(
       },
     });
     
-    const needsAddressConfirmation = !session.confirmedAddress || 
-      (session.state !== 'PROPOSING_TIMES' && session.state !== 'BOOKING_JOB');
-    
-    if (location && needsAddressConfirmation) {
+    // Confirm address on file
+    if (location && session.state !== 'AWAITING_ADDRESS_CONFIRM') {
       const addressStr = location.address 
         ? `${location.address.street}, ${location.address.city}`
         : 'your address on file';
       
       await prisma.aIAgentSession.update({
         where: { id: session.id },
-        data: { confirmedAddress: location?.address?.street },
+        data: { 
+          confirmedAddress: location?.address?.street,
+          state: 'AWAITING_ADDRESS_CONFIRM',
+        },
       });
       
       const confirmAddressResponse = await generateResponse(
         tenant, contact, session,
-        `Great news - found their account! Ask them to confirm if "${addressStr}" is still their correct service address for this visit, or if they need service at a different location. Just need a quick yes or the new address.`,
+        `Great - I found your account! Just to confirm, is "${addressStr}" still the best address for today's service? Just reply yes or give me the correct address.`,
         conversationHistory
       );
       
-      await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
       return {
         shouldRespond: true,
         responseText: confirmAddressResponse,
-        newState: 'QUALIFYING',
+        newState: 'AWAITING_ADDRESS_CONFIRM',
       };
-    }
-    
-    return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
-    
-  } else {
-    if (!session.confirmedAddress) {
-      const askAddressResponse = await generateResponse(
-        tenant, contact, session,
-        "Customer is new to our system. Ask for their full service address including street, city, state, and zip so we can set them up and schedule service.",
-        conversationHistory
-      );
-      await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
-      return {
-        shouldRespond: true,
-        responseText: askAddressResponse,
-        newState: 'QUALIFYING',
-      };
-    }
-    
-    await updateSessionState(session.id, 'CREATING_ST_CUSTOMER', 'PENDING');
-    
-    const addressParts = parseAddress(session.confirmedAddress || '');
-    const createResult = await createServiceTitanCustomer(session.tenantId, {
-      name: session.confirmedName || `${contact.firstName} ${contact.lastName}`.trim() || 'Customer',
-      phone: contact.phone,
-      email: session.confirmedEmail,
-      address: addressParts,
-    });
-
-    if (createResult) {
-      await prisma.aIAgentSession.update({
-        where: { id: session.id },
-        data: {
-          stCustomerId: String(createResult.customerId),
-          stLocationId: String(createResult.locationId),
-        },
-      });
     }
     
     return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
   }
+  
+  // STEP 2: No phone match - ask for address first
+  if (!session.confirmedAddress) {
+    const askAddressResponse = await generateResponse(
+      tenant, contact, session,
+      "I'd love to help get you scheduled! What's the address where you'd like the service? Please include street, city, and zip.",
+      conversationHistory
+    );
+    
+    await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: { state: 'COLLECTING_ADDRESS' },
+    });
+    
+    return {
+      shouldRespond: true,
+      responseText: askAddressResponse,
+      newState: 'COLLECTING_ADDRESS',
+    };
+  }
+  
+  // STEP 3: We have an address - search by address to find potential duplicates
+  const addressSearch = await searchByAddress(session.tenantId, session.confirmedAddress);
+  
+  if (addressSearch.found && addressSearch.possibleMatches && addressSearch.possibleMatches.length > 0) {
+    // Found potential match by address - ask for identity confirmation
+    const match = addressSearch.possibleMatches[0];
+    
+    await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: {
+        pendingMatchCustomerId: String(match.customerId),
+        pendingMatchLocationId: match.locationId ? String(match.locationId) : undefined,
+        pendingMatchName: match.customerName,
+        state: 'AWAITING_IDENTITY_CONFIRM',
+      },
+    });
+    
+    const confirmIdentityResponse = await generateResponse(
+      tenant, contact, session,
+      `I found an account at that address under the name "${match.customerName}". Is that you? Just reply yes or no.`,
+      conversationHistory
+    );
+    
+    return {
+      shouldRespond: true,
+      responseText: confirmIdentityResponse,
+      newState: 'AWAITING_IDENTITY_CONFIRM',
+    };
+  }
+  
+  // STEP 4: No address match - ask for name
+  if (!session.confirmedName) {
+    const contactName = `${contact.firstName} ${contact.lastName}`.trim();
+    if (contactName && contactName !== 'Customer') {
+      // We have a name from the contact record - use it
+      session.confirmedName = contactName;
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: { confirmedName: contactName },
+      });
+    } else {
+      // Ask for name
+      const askNameResponse = await generateResponse(
+        tenant, contact, session,
+        "Almost there! What name should I put on the account?",
+        conversationHistory
+      );
+      
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: { state: 'AWAITING_NAME' },
+      });
+      
+      return {
+        shouldRespond: true,
+        responseText: askNameResponse,
+        newState: 'AWAITING_NAME',
+      };
+    }
+  }
+  
+  // STEP 5: Search by name as final duplicate check
+  if (session.confirmedName) {
+    const nameSearch = await searchByName(session.tenantId, session.confirmedName);
+    
+    if (nameSearch.found && nameSearch.possibleMatches && nameSearch.possibleMatches.length > 0) {
+      // Found potential match by name - ask for confirmation
+      const match = nameSearch.possibleMatches[0];
+      
+      if (match.address) {
+        await prisma.aIAgentSession.update({
+          where: { id: session.id },
+          data: {
+            pendingMatchCustomerId: String(match.customerId),
+            pendingMatchLocationId: match.locationId ? String(match.locationId) : undefined,
+            pendingMatchName: match.customerName,
+            state: 'AWAITING_IDENTITY_CONFIRM',
+          },
+        });
+        
+        const confirmNameMatchResponse = await generateResponse(
+          tenant, contact, session,
+          `I found an account for "${match.customerName}" at ${match.address}. Is that you? Just reply yes or no.`,
+          conversationHistory
+        );
+        
+        return {
+          shouldRespond: true,
+          responseText: confirmNameMatchResponse,
+          newState: 'AWAITING_IDENTITY_CONFIRM',
+        };
+      }
+    }
+  }
+  
+  // STEP 6: No matches found - create new customer
+  await updateSessionState(session.id, 'CREATING_ST_CUSTOMER', 'PENDING');
+  
+  const addressParts = parseAddress(session.confirmedAddress || '');
+  const createResult = await createServiceTitanCustomer(session.tenantId, {
+    name: session.confirmedName || `${contact.firstName} ${contact.lastName}`.trim() || 'Customer',
+    phone: contact.phone,
+    email: session.confirmedEmail,
+    address: addressParts,
+  });
+
+  if (createResult) {
+    await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: {
+        stCustomerId: String(createResult.customerId),
+        stLocationId: String(createResult.locationId),
+      },
+    });
+  }
+  
+  return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
 }
 
 async function proposeAvailableTimes(
@@ -602,6 +757,125 @@ async function processCSRBooking(
   };
 }
 
+async function handleCallMeRequest(
+  session: any,
+  config: any,
+  tenant: any,
+  contact: any,
+  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
+): Promise<AIAgentResponse> {
+  await updateSessionState(session.id, 'HANDOFF_TO_CSR', 'CSR_BOOKING');
+
+  const conversationSummary = await buildConversationSummary(session.conversationId, 50);
+
+  try {
+    await createBookingFromInboundSms({
+      tenantId: session.tenantId,
+      contact: {
+        id: contact.id,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        phone: contact.phone,
+        email: session.confirmedEmail,
+      },
+      conversationId: session.conversationId,
+      toNumber: contact.phone,
+      lastInboundMessage: `[AI Agent - Customer Requested Callback] ${session.offerContext?.offerName || 'Interested customer'}`,
+      conversationSummary: conversationSummary,
+    });
+  } catch (error) {
+    console.error('Failed to create callback booking:', error);
+  }
+
+  const callbackResponse = await generateResponse(
+    tenant, contact, session,
+    'Customer specifically asked for someone to call them. Let them know warmly that someone from the team will give them a call shortly. Be friendly and appreciative of their interest.',
+    conversationHistory
+  );
+
+  return {
+    shouldRespond: true,
+    responseText: callbackResponse,
+    newState: 'HANDOFF_TO_CSR',
+    outcome: 'CSR_BOOKING',
+  };
+}
+
+async function handleIdentityConfirmation(
+  session: any,
+  config: any,
+  tenant: any,
+  contact: any,
+  confirmed: boolean,
+  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
+): Promise<AIAgentResponse> {
+  if (confirmed) {
+    if (session.state === 'AWAITING_ADDRESS_CONFIRM' || session.state === 'QUALIFYING') {
+      return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
+    }
+    
+    if (session.state === 'AWAITING_IDENTITY_CONFIRM' && session.pendingMatchCustomerId) {
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: {
+          stCustomerId: String(session.pendingMatchCustomerId),
+          stLocationId: session.pendingMatchLocationId ? String(session.pendingMatchLocationId) : undefined,
+          confirmedName: session.pendingMatchName,
+        },
+      });
+      
+      return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
+    }
+    
+    return await handleBookingIntent(session, config, tenant, contact, 'BOOK_YES', conversationHistory);
+  } else {
+    if (session.state === 'AWAITING_ADDRESS_CONFIRM') {
+      const askNewAddressResponse = await generateResponse(
+        tenant, contact, session,
+        "They said that's not their current address. Ask them nicely for the correct address where they'd like the service. Be friendly - maybe they moved or it's a different property.",
+        conversationHistory
+      );
+      
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: { confirmedAddress: null, state: 'COLLECTING_ADDRESS' },
+      });
+      
+      return {
+        shouldRespond: true,
+        responseText: askNewAddressResponse,
+        newState: 'COLLECTING_ADDRESS',
+      };
+    }
+    
+    if (session.state === 'AWAITING_IDENTITY_CONFIRM') {
+      const askAddressResponse = await generateResponse(
+        tenant, contact, session,
+        "They said that's not them. Apologize for the mixup and ask for their full service address so we can set them up properly. Be friendly and understanding.",
+        conversationHistory
+      );
+      
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: { 
+          pendingMatchCustomerId: null, 
+          pendingMatchLocationId: null,
+          pendingMatchName: null,
+          state: 'COLLECTING_ADDRESS',
+        },
+      });
+      
+      return {
+        shouldRespond: true,
+        responseText: askAddressResponse,
+        newState: 'COLLECTING_ADDRESS',
+      };
+    }
+    
+    return await handleBookingIntent(session, config, tenant, contact, 'BOOK_YES', conversationHistory);
+  }
+}
+
 async function handoffToCSR(
   session: any,
   tenant: any,
@@ -668,14 +942,21 @@ async function generateResponse(
 You are responding on behalf of ${tenant.publicName || tenant.name}.
 ${knowledgeContext}
 
+PERSONALITY:
+- Be warm, friendly, and conversational like texting with a helpful friend
+- Use natural, casual language (contractions, simple words)
+- Sound human and genuine, not robotic or scripted
+- Show enthusiasm when appropriate ("Great!", "Awesome!", "Perfect!")
+- Be empathetic and understanding
+
 RULES:
 1. Keep response under 160 characters (SMS limit)
-2. Be friendly and professional
-3. Use the customer's first name if known
-4. Never mention you're an AI
-5. Don't include "Reply STOP to unsubscribe" - it's added automatically
-6. End with a clear next step or question when appropriate
-7. Use the knowledge base to provide accurate company-specific information`;
+2. Use the customer's first name when you have it
+3. Never mention you're an AI or bot
+4. Don't include "Reply STOP" - it's added automatically
+5. End with a clear, simple next step or question
+6. Use the knowledge base for accurate company info
+7. Match the customer's energy - if they're excited, be excited back`;
 
     const userPrompt = `CONTEXT:
 - Customer Name: ${contact.firstName || 'Customer'}

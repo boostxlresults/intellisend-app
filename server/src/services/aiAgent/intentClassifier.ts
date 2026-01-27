@@ -13,6 +13,9 @@ export type CustomerIntent =
   | 'NOT_INTERESTED'     // Clear no
   | 'OPT_OUT'            // STOP, UNSUBSCRIBE, etc.
   | 'WRONG_NUMBER'       // Wrong person
+  | 'CALL_ME'            // Wants a person to call them
+  | 'CONFIRM_YES'        // Confirming identity/address (yes, that's me)
+  | 'CONFIRM_NO'         // Denying identity/address (no, wrong person/address)
   | 'UNCLEAR';           // Can't determine intent
 
 export interface IntentClassification {
@@ -83,6 +86,9 @@ Classify the customer's intent into ONE of these categories:
 - NOT_INTERESTED: Clear rejection (e.g., "no thanks", "not interested", "don't need it")
 - OPT_OUT: Wants to stop receiving messages
 - WRONG_NUMBER: Claims wrong number or wrong person
+- CALL_ME: Customer prefers a real person call them (e.g., "can someone call me", "have someone give me a call", "I'd rather talk to someone")
+- CONFIRM_YES: Customer confirming their identity or address (e.g., "yes that's me", "correct", "yep that's right", "that's my address")
+- CONFIRM_NO: Customer denying identity or address (e.g., "no that's not me", "wrong address", "I moved", "different location")
 - UNCLEAR: Cannot determine intent
 
 Also extract any data the customer provided:
@@ -138,7 +144,19 @@ function fallbackClassification(message: string): IntentClassification {
   const noPatterns = ['no', 'nope', 'not interested', 'no thanks', 'pass'];
   const laterPatterns = ['later', 'not now', 'maybe', 'next month', 'busy'];
   const questionPatterns = ['?', 'what', 'how', 'when', 'where', 'why', 'which', 'does', 'is it', 'can you'];
+  const callMePatterns = ['call me', 'give me a call', 'call back', 'phone call', 'talk to someone', 'speak to someone', 'real person'];
+  const confirmYesPatterns = ["that's me", "that's correct", "that's right", "correct address", "yes that"];
+  const confirmNoPatterns = ["that's not me", "wrong address", "not my address", "i moved", "different address", "no that"];
 
+  if (callMePatterns.some(p => lower.includes(p))) {
+    return { intent: 'CALL_ME', confidence: 0.8, reasoning: 'Matched call me pattern', extractedData: {} };
+  }
+  if (confirmYesPatterns.some(p => lower.includes(p))) {
+    return { intent: 'CONFIRM_YES', confidence: 0.8, reasoning: 'Matched confirm yes pattern', extractedData: {} };
+  }
+  if (confirmNoPatterns.some(p => lower.includes(p))) {
+    return { intent: 'CONFIRM_NO', confidence: 0.8, reasoning: 'Matched confirm no pattern', extractedData: {} };
+  }
   if (yesPatterns.some(p => lower.includes(p))) {
     return { intent: 'BOOK_YES', confidence: 0.7, reasoning: 'Matched yes pattern', extractedData: {} };
   }

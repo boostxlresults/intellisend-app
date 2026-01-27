@@ -728,6 +728,10 @@ enum ConversationAgentState {
   INBOUND_RECEIVED        // Customer replied, needs classification
   QUALIFYING              // AI is asking qualifying questions
   MATCHING_ST_RECORDS     // Searching ServiceTitan for existing customer
+  COLLECTING_ADDRESS      // Asking customer for address
+  AWAITING_ADDRESS_CONFIRM // Waiting for customer to confirm address on file
+  AWAITING_IDENTITY_CONFIRM // Waiting for customer to confirm identity (name match)
+  AWAITING_NAME           // Asking customer for their name
   CREATING_ST_CUSTOMER    // Creating new customer/location in ST
   PROPOSING_TIMES         // Offering appointment times
   BOOKING_JOB             // Creating job/appointment in ST
@@ -796,6 +800,11 @@ model AIAgentSession {
   stJobId             String?
   stAppointmentId     String?
   stBookingId         String?
+  
+  // Pending match data (for duplicate detection confirmation)
+  pendingMatchCustomerId  String?
+  pendingMatchLocationId  String?
+  pendingMatchName        String?
   
   // Tracking
   offerContextId      String?
