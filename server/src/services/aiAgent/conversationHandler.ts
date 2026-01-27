@@ -5,6 +5,7 @@ import { searchServiceTitanCustomer, searchByAddress, searchByName, createServic
 import { createBookingFromInboundSms, CreateBookingFromInboundSmsOptions } from '../serviceTitanClient';
 import { buildConversationSummary } from '../conversationSummary';
 import { getActivePersonaForTenant, getKnowledgeSnippetsForTenant } from '../../ai/aiEngine';
+import { sendReplyNotification } from '../emailNotifications';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -910,6 +911,7 @@ async function handoffToCSR(
   await updateSessionState(session.id, 'HANDOFF_TO_CSR', 'NEEDS_HUMAN');
 
   const conversationSummary = await buildConversationSummary(session.conversationId, 50);
+  let stBookingCreated = false;
 
   try {
     await createBookingFromInboundSms({
@@ -926,8 +928,40 @@ async function handoffToCSR(
       lastInboundMessage: `[AI Agent - Needs Human] Reason: ${reason}`,
       conversationSummary: conversationSummary,
     });
+    stBookingCreated = true;
   } catch (error) {
     console.error('Failed to create handoff booking:', error);
+  }
+
+  // Send email notification as backup (especially important if ST booking failed)
+  if (tenant.notificationEmail) {
+    try {
+      const messages = await prisma.message.findMany({
+        where: { conversationId: session.conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+
+      const conversationUrl = `https://app.intellisend.net/conversations/${session.conversationId}`;
+      
+      await sendReplyNotification({
+        toEmail: tenant.notificationEmail,
+        tenantName: tenant.name,
+        contactName: `${contact.firstName} ${contact.lastName}`.trim() || 'Customer',
+        contactPhone: contact.phone,
+        conversationId: session.conversationId,
+        conversationUrl,
+        messages: messages.reverse().map((m: any) => ({
+          direction: m.direction,
+          body: m.body,
+          createdAt: m.createdAt,
+        })),
+        serviceTitanEnabled: stBookingCreated,
+      });
+      console.log(`[AI Agent] Email notification sent to ${tenant.notificationEmail} for handoff (ST booking: ${stBookingCreated})`);
+    } catch (emailError) {
+      console.error('Failed to send handoff email notification:', emailError);
+    }
   }
 
   return {
