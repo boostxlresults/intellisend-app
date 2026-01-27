@@ -285,8 +285,12 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         const fromNumber = sendContext?.defaultFromNumber?.phoneNumber || To;
         
         // Add opt-out footer only if not already present
-        const hasOptOut = aiResponse.responseText.toLowerCase().includes('stop to unsubscribe') || 
-                          aiResponse.responseText.toLowerCase().includes('reply stop');
+        const lowerText = aiResponse.responseText.toLowerCase();
+        const hasOptOut = lowerText.includes('stop to unsubscribe') || 
+                          lowerText.includes('reply stop') ||
+                          lowerText.includes('text stop') ||
+                          lowerText.includes('unsubscribe') ||
+                          /\bstop\b/.test(lowerText);
         const messageWithFooter = hasOptOut 
           ? aiResponse.responseText 
           : `${aiResponse.responseText}\n\nReply STOP to unsubscribe.`;
