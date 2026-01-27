@@ -250,22 +250,18 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
     
     const inboundMessageSid = MessageSid || '';
     
-    // Create a ServiceTitan booking job for each inbound message (not just the first one)
+    // Create a ServiceTitan booking job for each inbound message (non-blocking)
     if (inboundMessageSid) {
-      try {
-        await enqueueServiceTitanBookingJob(
-          inboundMessageSid,
-          conversation.id,
-          tenantId,
-          contact.id,
-          To,
-          Body || ''
-        );
-      } catch (enqueueError) {
-        console.error('Failed to enqueue ServiceTitan booking job, returning 500 for retry:', enqueueError);
-        res.status(500).type('text/xml').send('<Response></Response>');
-        return;
-      }
+      enqueueServiceTitanBookingJob(
+        inboundMessageSid,
+        conversation.id,
+        tenantId,
+        contact.id,
+        To,
+        Body || ''
+      ).catch(enqueueError => {
+        console.error('[ServiceTitan] Failed to enqueue booking job (non-blocking):', enqueueError);
+      });
     }
     
     console.log(`Inbound message saved for conversation ${conversation.id}`);
