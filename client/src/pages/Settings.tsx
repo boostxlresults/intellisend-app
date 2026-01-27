@@ -145,8 +145,8 @@ export default function Settings() {
     try {
       await api.updateTenantSettings(selectedTenant.id, {
         timezone: formData.get('timezone') as string,
-        quietHoursStart: convertTo24Hour(startHour, startPeriod),
-        quietHoursEnd: convertTo24Hour(endHour, endPeriod),
+        quietHoursStart: convertTo24Hour(startHour, startPeriod) * 60,
+        quietHoursEnd: convertTo24Hour(endHour, endPeriod) * 60,
         defaultFromNumberId: formData.get('defaultFromNumberId') as string || undefined,
         sendRatePerMinute: parseInt(formData.get('sendRatePerMinute') as string) || 30,
         sendJitterMinMs: parseInt(formData.get('sendJitterMinMs') as string) || 1000,
