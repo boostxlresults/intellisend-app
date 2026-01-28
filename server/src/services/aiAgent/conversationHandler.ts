@@ -28,39 +28,40 @@ export async function handleInboundMessage(
   contactId: string,
   messageBody: string
 ): Promise<AIAgentResponse | null> {
-  const config = await prisma.aIAgentConfig.findUnique({
-    where: { tenantId },
-  });
+  try {
+    const config = await prisma.aIAgentConfig.findUnique({
+      where: { tenantId },
+    });
 
-  if (!config || !config.enabled || !config.autoRespond) {
-    return null;
-  }
+    if (!config || !config.enabled || !config.autoRespond) {
+      return null;
+    }
 
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-  });
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
 
-  const contact = await prisma.contact.findUnique({
-    where: { id: contactId },
-  });
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+    });
 
-  const conversation = await prisma.conversation.findUnique({
-    where: { id: conversationId },
-  });
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
 
-  if (!tenant || !contact || !conversation) {
-    return null;
-  }
+    if (!tenant || !contact || !conversation) {
+      return null;
+    }
 
-  // Check if AI agent is disabled at contact or conversation level
-  if (contact.aiAgentEnabled === false || conversation.aiAgentEnabled === false) {
-    console.log(`[AI Agent] Disabled for contact ${contactId} or conversation ${conversationId}`);
-    return null;
-  }
+    // Check if AI agent is disabled at contact or conversation level
+    if ((contact as any).aiAgentEnabled === false || (conversation as any).aiAgentEnabled === false) {
+      console.log(`[AI Agent] Disabled for contact ${contactId} or conversation ${conversationId}`);
+      return null;
+    }
 
-  let session = await prisma.aIAgentSession.findUnique({
-    where: { conversationId },
-    include: { offerContext: true },
+    let session = await prisma.aIAgentSession.findUnique({
+      where: { conversationId },
+      include: { offerContext: true },
   });
 
   if (!session) {
@@ -142,6 +143,20 @@ export async function handleInboundMessage(
   if (session.state === 'AWAITING_NAME' && session.confirmedName) {
     // User provided their name - continue with booking flow
     return await handleBookingIntent(session, config, tenant, contact, 'BOOK_YES', conversationHistory);
+  }
+  
+  // Fallback: If we're collecting address and OpenAI didn't extract it, but message looks like an address
+  if (session.state === 'COLLECTING_ADDRESS' && !session.confirmedAddress) {
+    const looksLikeAddress = /\d+.*(?:st|street|ave|avenue|blvd|boulevard|dr|drive|rd|road|ln|lane|way|ct|court|pl|place|cir|circle|trail|trl)/i.test(messageBody) ||
+                             /\d{5}(?:-\d{4})?/.test(messageBody); // Has zip code
+    if (looksLikeAddress) {
+      console.log(`[AI Agent] Fallback address extraction: "${messageBody}"`);
+      await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: { confirmedAddress: messageBody.trim() },
+      });
+      session.confirmedAddress = messageBody.trim();
+    }
   }
   
   if (session.state === 'COLLECTING_ADDRESS' && session.confirmedAddress) {
@@ -255,6 +270,15 @@ export async function handleInboundMessage(
         responseText: clarifyResponse,
         newState: 'QUALIFYING',
       };
+  }
+  } catch (error) {
+    console.error('[AI Agent] Critical error in handleInboundMessage:', error);
+    return {
+      shouldRespond: true,
+      responseText: "Thanks for your message! One of our team members will reach out to you shortly.",
+      newState: 'ERROR',
+      outcome: 'NEEDS_HUMAN',
+    };
   }
 }
 
