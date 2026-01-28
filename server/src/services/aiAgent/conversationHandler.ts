@@ -103,7 +103,9 @@ export async function handleInboundMessage(
     price: session.offerContext.price || undefined,
   } : undefined;
 
+  console.log(`[AI Agent] Classifying intent for message: "${messageBody.substring(0, 50)}..."`);
   const classification = await classifyIntent(messageBody, conversationHistory, offerContext);
+  console.log(`[AI Agent] Intent: ${classification.intent}, Extracted address: ${classification.extractedData.address || 'none'}`);
 
   await prisma.aIAgentSession.update({
     where: { id: session.id },
@@ -111,6 +113,7 @@ export async function handleInboundMessage(
   });
 
   if (classification.extractedData.address) {
+    console.log(`[AI Agent] Saving extracted address: ${classification.extractedData.address}`);
     await prisma.aIAgentSession.update({
       where: { id: session.id },
       data: { confirmedAddress: classification.extractedData.address },
@@ -161,6 +164,7 @@ export async function handleInboundMessage(
   
   if (session.state === 'COLLECTING_ADDRESS' && session.confirmedAddress) {
     // User provided their address - continue with booking flow
+    console.log(`[AI Agent] State is COLLECTING_ADDRESS with address "${session.confirmedAddress}", calling handleBookingIntent`);
     return await handleBookingIntent(session, config, tenant, contact, 'BOOK_YES', conversationHistory);
   }
 
@@ -290,6 +294,7 @@ async function handleBookingIntent(
   intent: CustomerIntent,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
+  console.log(`[AI Agent] handleBookingIntent started, session state: ${session.state}, address: ${session.confirmedAddress}`);
   
   try {
     if (session.state === 'PROPOSING_TIMES' && session.availableSlots) {
@@ -299,6 +304,7 @@ async function handleBookingIntent(
     await updateSessionState(session.id, 'MATCHING_ST_RECORDS', 'PENDING');
   
   // STEP 1: Search by phone number first (most reliable)
+  console.log(`[AI Agent] STEP 1: Searching ServiceTitan by phone: ${contact.phone}`);
   const phoneSearch = await searchServiceTitanCustomer(
     session.tenantId,
     contact.phone,
@@ -306,6 +312,8 @@ async function handleBookingIntent(
     session.confirmedAddress
   );
 
+  console.log(`[AI Agent] Phone search result: found=${phoneSearch.found}, customers=${phoneSearch.customers.length}`);
+  
   if (phoneSearch.found && phoneSearch.customers.length > 0) {
     // Found by phone - use first customer (phone is unique enough)
     const customer = phoneSearch.customers[0];
@@ -396,7 +404,9 @@ async function handleBookingIntent(
   }
   
   // STEP 3: We have an address - search by address to find potential duplicates
+  console.log(`[AI Agent] STEP 3: Searching ServiceTitan by address: "${session.confirmedAddress}"`);
   const addressSearch = await searchByAddress(session.tenantId, session.confirmedAddress);
+  console.log(`[AI Agent] Address search result: found=${addressSearch.found}, matches=${addressSearch.possibleMatches?.length || 0}`);
   
   if (addressSearch.found && addressSearch.possibleMatches && addressSearch.possibleMatches.length > 0) {
     // Found potential match by address - ask for identity confirmation
@@ -426,8 +436,10 @@ async function handleBookingIntent(
   }
   
   // STEP 4: No address match - ask for name
+  console.log(`[AI Agent] STEP 4: No address match, checking for name. Current confirmedName: "${session.confirmedName}"`);
   if (!session.confirmedName) {
     const contactName = `${contact.firstName} ${contact.lastName}`.trim();
+    console.log(`[AI Agent] Contact name from record: "${contactName}"`);
     if (contactName && contactName !== 'Customer') {
       // We have a name from the contact record - use it
       session.confirmedName = contactName;
@@ -435,6 +447,7 @@ async function handleBookingIntent(
         where: { id: session.id },
         data: { confirmedName: contactName },
       });
+      console.log(`[AI Agent] Using contact name: "${contactName}"`);
     } else {
       // Ask for name
       const askNameResponse = await generateResponse(
@@ -457,8 +470,10 @@ async function handleBookingIntent(
   }
   
   // STEP 5: Search by name as final duplicate check
+  console.log(`[AI Agent] STEP 5: Searching by name: "${session.confirmedName}"`);
   if (session.confirmedName) {
     const nameSearch = await searchByName(session.tenantId, session.confirmedName);
+    console.log(`[AI Agent] Name search result: found=${nameSearch.found}, matches=${nameSearch.possibleMatches?.length || 0}`);
     
     if (nameSearch.found && nameSearch.possibleMatches && nameSearch.possibleMatches.length > 0) {
       // Found potential match by name - ask for confirmation
@@ -491,9 +506,11 @@ async function handleBookingIntent(
   }
   
   // STEP 6: No matches found - create new customer
+  console.log(`[AI Agent] STEP 6: No matches found, creating new ServiceTitan customer`);
   await updateSessionState(session.id, 'CREATING_ST_CUSTOMER', 'PENDING');
   
   const addressParts = parseAddress(session.confirmedAddress || '');
+  console.log(`[AI Agent] Creating customer with name: "${session.confirmedName || contact.firstName}", phone: ${contact.phone}`);
   const createResult = await createServiceTitanCustomer(session.tenantId, {
     name: session.confirmedName || `${contact.firstName} ${contact.lastName}`.trim() || 'Customer',
     phone: contact.phone,
@@ -501,6 +518,7 @@ async function handleBookingIntent(
     address: addressParts,
   });
 
+  console.log(`[AI Agent] Create customer result: ${createResult ? `customerId=${createResult.customerId}` : 'failed/null'}`);
   if (createResult) {
     await prisma.aIAgentSession.update({
       where: { id: session.id },
@@ -511,6 +529,7 @@ async function handleBookingIntent(
     });
   }
   
+  console.log(`[AI Agent] Calling proposeAvailableTimes`);
   return await proposeAvailableTimes(session, config, tenant, contact, conversationHistory);
   } catch (error) {
     console.error('Error in handleBookingIntent:', error);
@@ -525,14 +544,17 @@ async function proposeAvailableTimes(
   contact: any,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
+  console.log(`[AI Agent] proposeAvailableTimes: businessUnitId=${config?.defaultBusinessUnitId}`);
   try {
     const slots = await getServiceTitanAvailability(session.tenantId, {
       businessUnitId: config.defaultBusinessUnitId,
       maxSlots: 4,
       daysAhead: 7,
     });
+    console.log(`[AI Agent] Got ${slots.length} availability slots`);
     
     if (slots.length === 0) {
+      console.log(`[AI Agent] No slots available, handing off to CSR`);
       return await handoffToCSR(session, tenant, contact, 'No available time slots found');
     }
     
