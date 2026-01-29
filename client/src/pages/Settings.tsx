@@ -56,7 +56,7 @@ export default function Settings() {
   const [syncStatus, setSyncStatus] = useState<{ taggedCount: number; totalContacts: number } | null>(null);
   const [testingAvailability, setTestingAvailability] = useState(false);
   const [importingContacts, setImportingContacts] = useState(false);
-  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color?: string }[]>([]);
   const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
   const [aiAgentForm, setAiAgentForm] = useState({
     enabled: false,
