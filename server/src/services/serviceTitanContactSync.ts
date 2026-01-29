@@ -420,14 +420,14 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             data: {
               tenantId,
               firstName,
-              lastName: lastName || null,
+              lastName: lastName || '',
               phone: formatPhoneForDisplay(primaryPhone),
               email: customer.email || null,
               address: customer.address?.street || null,
               city: customer.address?.city || null,
               state: customer.address?.state || null,
               zip: customer.address?.zip || null,
-              source: 'ServiceTitan Import',
+              leadSource: 'ServiceTitan Import',
             },
           });
 
