@@ -812,6 +812,13 @@ model AIAgentSession {
   pendingMatchLocationId  String?
   pendingMatchName        String?
   
+  // ServiceTitan existing customer context (fetched once on first message)
+  stContextChecked        Boolean   @default(false)  // Whether ST context lookup has been done
+  stExistingCustomer      Boolean   @default(false)
+  stAddressOnFile         String?
+  stCityOnFile            String?
+  stStateOnFile           String?
+  
   // Tracking
   offerContextId      String?
   lastIntent          String?               // Last classified intent

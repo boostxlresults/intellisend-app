@@ -103,6 +103,30 @@ export async function handleInboundMessage(
     price: session.offerContext.price || undefined,
   } : undefined;
 
+  // Fetch ServiceTitan customer context for personalized responses (only once per conversation)
+  if (!session.stContextChecked) {
+    const stCustomerContext = await getServiceTitanCustomerContext(tenantId, contact);
+    
+    // Store the context on the session (mark as checked regardless of result)
+    const updatedSession = await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: {
+        stContextChecked: true,
+        stExistingCustomer: stCustomerContext?.isExistingCustomer || false,
+        stAddressOnFile: stCustomerContext?.address || null,
+        stCityOnFile: stCustomerContext?.city || null,
+        stStateOnFile: stCustomerContext?.state || null,
+      },
+      include: { offerContext: true },
+    });
+    // Refresh in-memory session for subsequent calls in this request
+    session.stContextChecked = true;
+    session.stExistingCustomer = updatedSession.stExistingCustomer;
+    session.stAddressOnFile = updatedSession.stAddressOnFile;
+    session.stCityOnFile = updatedSession.stCityOnFile;
+    session.stStateOnFile = updatedSession.stStateOnFile;
+  }
+
   console.log(`[AI Agent] Classifying intent for message: "${messageBody.substring(0, 50)}..."`);
   const classification = await classifyIntent(messageBody, conversationHistory, offerContext);
   console.log(`[AI Agent] Intent: ${classification.intent}, Extracted address: ${classification.extractedData.address || 'none'}`);
@@ -1028,6 +1052,81 @@ async function handoffToCSR(
   };
 }
 
+interface ServiceTitanCustomerContext {
+  isExistingCustomer: boolean;
+  address?: string;
+  city?: string;
+  state?: string;
+  customerName?: string;
+}
+
+async function getServiceTitanCustomerContext(
+  tenantId: string,
+  contact: any
+): Promise<ServiceTitanCustomerContext | null> {
+  try {
+    // Check if contact has "In ServiceTitan" tag
+    const stTag = await prisma.tag.findFirst({
+      where: {
+        tenantId,
+        name: 'In ServiceTitan',
+      },
+    });
+
+    if (!stTag) {
+      return null;
+    }
+
+    const hasTag = await prisma.contactTag.findFirst({
+      where: {
+        contactId: contact.id,
+        tagId: stTag.id,
+      },
+    });
+
+    if (!hasTag) {
+      return null;
+    }
+
+    // Contact is tagged as "In ServiceTitan" - fetch their data
+    console.log(`[AI Agent] Contact ${contact.id} has "In ServiceTitan" tag, fetching customer data...`);
+    
+    const searchResult = await searchServiceTitanCustomer(
+      tenantId,
+      contact.phone,
+      contact.email,
+      undefined
+    );
+
+    if (searchResult.found && searchResult.customers.length > 0) {
+      const customer = searchResult.customers[0];
+      const location = searchResult.locations.find(l => l.customerId === customer.id);
+      
+      console.log(`[AI Agent] Found ServiceTitan customer: ${customer.name}, address: ${location?.address?.street || 'none'}`);
+      
+      return {
+        isExistingCustomer: true,
+        address: location?.address?.street,
+        city: location?.address?.city,
+        state: location?.address?.state,
+        customerName: customer.name,
+      };
+    }
+
+    // Tagged but couldn't find in ServiceTitan (might have been synced previously)
+    return {
+      isExistingCustomer: true,
+      address: contact.address,
+      city: contact.city,
+      state: contact.state,
+      customerName: `${contact.firstName} ${contact.lastName}`.trim(),
+    };
+  } catch (error) {
+    console.error('[AI Agent] Error fetching ServiceTitan customer context:', error);
+    return null;
+  }
+}
+
 async function generateResponse(
   tenant: any,
   contact: any,
@@ -1038,6 +1137,17 @@ async function generateResponse(
   if (!process.env.OPENAI_API_KEY) {
     return "Thanks for your message! We'll be in touch shortly.";
   }
+
+  // Read ServiceTitan context from session (cached from first message lookup)
+  const stCustomerContext: ServiceTitanCustomerContext | null = session.stExistingCustomer
+    ? {
+        isExistingCustomer: true,
+        address: session.stAddressOnFile || undefined,
+        city: session.stCityOnFile || undefined,
+        state: session.stStateOnFile || undefined,
+        customerName: session.confirmedName || undefined,
+      }
+    : null;
 
   try {
     const persona = await getActivePersonaForTenant(tenant.id);
@@ -1075,15 +1185,27 @@ RULES:
 8. ALWAYS reference the conversation context - if replying to "who is this?", mention what the previous message was about
 9. Be specific about what you're helping with based on the conversation history`;
 
+    let existingCustomerContext = '';
+    if (stCustomerContext?.isExistingCustomer) {
+      existingCustomerContext = `\n- EXISTING CUSTOMER: Yes, they have an account with us!`;
+      if (stCustomerContext.address) {
+        existingCustomerContext += `\n- Address on file: ${stCustomerContext.address}${stCustomerContext.city ? `, ${stCustomerContext.city}` : ''}${stCustomerContext.state ? `, ${stCustomerContext.state}` : ''}`;
+      }
+      if (stCustomerContext.customerName && stCustomerContext.customerName !== contact.firstName) {
+        existingCustomerContext += `\n- Name on account: ${stCustomerContext.customerName}`;
+      }
+    }
+
     const userPrompt = `CONTEXT:
 - Customer Name: ${contact.firstName || 'Customer'}
-- Company: ${tenant.publicName || tenant.name}
+- Company: ${tenant.publicName || tenant.name}${existingCustomerContext}
 ${session.offerContext ? `- Current Offer: ${session.offerContext.offerName} ${session.offerContext.price ? `at ${session.offerContext.price}` : ''}` : ''}
 
 RECENT CONVERSATION:
 ${historyText}
 
 INSTRUCTION: ${instruction}
+${stCustomerContext?.isExistingCustomer && stCustomerContext.address && conversationHistory.length <= 2 ? `\nIMPORTANT: Since this is an existing customer with address on file, consider warmly acknowledging you recognize them and confirming their address is still correct (e.g., "I see you're already in our system! Are you still at [address]?") - but only if appropriate to the conversation flow.` : ''}
 
 Write ONLY the SMS message text, nothing else:`;
 
