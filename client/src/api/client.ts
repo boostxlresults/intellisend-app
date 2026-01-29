@@ -707,6 +707,17 @@ export const api = {
       method: 'POST',
     }),
 
+  importServiceTitanContacts: (tenantId: string) =>
+    request<{
+      success: boolean;
+      totalFetched: number;
+      imported: number;
+      skippedDuplicates: number;
+      errors: number;
+    }>(`${API_BASE}/tenants/${tenantId}/servicetitan/import-contacts`, {
+      method: 'POST',
+    }),
+
   getServiceTitanSyncStatus: (tenantId: string) =>
     request<{
       taggedCount: number;

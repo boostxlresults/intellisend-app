@@ -139,6 +139,20 @@ router.post('/:tenantId/servicetitan/sync-contacts', async (req, res) => {
   }
 });
 
+router.post('/:tenantId/servicetitan/import-contacts', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const { importServiceTitanContacts } = await import('../services/serviceTitanContactSync');
+    const result = await importServiceTitanContacts(tenantId);
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error importing ServiceTitan contacts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/:tenantId/servicetitan/sync-status', async (req, res) => {
   try {
     const { tenantId } = req.params;

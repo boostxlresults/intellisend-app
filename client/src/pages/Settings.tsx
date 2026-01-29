@@ -55,6 +55,7 @@ export default function Settings() {
   const [syncingContacts, setSyncingContacts] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ taggedCount: number; totalContacts: number } | null>(null);
   const [testingAvailability, setTestingAvailability] = useState(false);
+  const [importingContacts, setImportingContacts] = useState(false);
   const [aiAgentForm, setAiAgentForm] = useState({
     enabled: false,
     autoRespond: true,
@@ -410,6 +411,39 @@ export default function Settings() {
       alert('Failed to test availability: ' + message);
     } finally {
       setTestingAvailability(false);
+    }
+  };
+
+  const handleImportContacts = async () => {
+    if (!selectedTenant) return;
+    if (!confirm(
+      'Import all customers from ServiceTitan?\n\n' +
+      'This will create new contacts for each ServiceTitan customer that doesn\'t already exist in IntelliSend. ' +
+      'Duplicates (matched by phone number) will be skipped.\n\n' +
+      'This may take a few minutes for large customer lists.'
+    )) return;
+    
+    setImportingContacts(true);
+    try {
+      const result = await api.importServiceTitanContacts(selectedTenant.id);
+      if (result.success) {
+        alert(
+          `ServiceTitan Import Complete!\n\n` +
+          `Customers Found: ${result.totalFetched}\n` +
+          `New Contacts Imported: ${result.imported}\n` +
+          `Skipped (Already Exist): ${result.skippedDuplicates}\n` +
+          (result.errors > 0 ? `Errors: ${result.errors}` : '') +
+          `\n\nAll imported contacts have been tagged with "In ServiceTitan".`
+        );
+        fetchData();
+      } else {
+        alert('Import failed. Make sure ServiceTitan is configured and enabled.');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to import contacts: ' + message);
+    } finally {
+      setImportingContacts(false);
     }
   };
 
@@ -981,7 +1015,24 @@ export default function Settings() {
                       {testingAvailability ? 'Testing...' : 'Test Availability API'}
                     </button>
                   </div>
-                  <p style={{ fontSize: '11px', color: '#a0aec0', marginTop: '8px' }}>
+                  
+                  <div style={{ marginTop: '16px', padding: '12px', background: '#ebf8ff', borderRadius: '6px', border: '1px solid #90cdf4' }}>
+                    <h5 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#2b6cb0' }}>Import Customers from ServiceTitan</h5>
+                    <p style={{ fontSize: '12px', color: '#4a5568', marginBottom: '12px' }}>
+                      Pull all your ServiceTitan customers into IntelliSend as contacts. Great for starting fresh with your full customer list! Duplicates will be automatically skipped.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleImportContacts}
+                      disabled={importingContacts}
+                      style={{ fontSize: '13px' }}
+                    >
+                      {importingContacts ? 'Importing... (this may take a while)' : 'Import All ServiceTitan Customers'}
+                    </button>
+                  </div>
+                  
+                  <p style={{ fontSize: '11px', color: '#a0aec0', marginTop: '12px' }}>
                     Contacts are synced nightly at midnight. Test Availability checks if real time slots are being returned from ServiceTitan.
                   </p>
                 </div>
