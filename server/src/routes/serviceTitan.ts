@@ -146,18 +146,48 @@ router.get('/:tenantId/servicetitan/sync-status', async (req, res) => {
     const { getServiceTitanTagId } = await import('../services/serviceTitanContactSync');
     const tagId = await getServiceTitanTagId(tenantId);
     
+    const totalContacts = await prisma.contact.count({
+      where: { tenantId },
+    });
+    
     if (!tagId) {
-      return res.json({ tagId: null, taggedCount: 0 });
+      return res.json({ tagId: null, taggedCount: 0, totalContacts });
     }
     
     const taggedCount = await prisma.contactTag.count({
       where: { tagId },
     });
     
-    res.json({ tagId, taggedCount });
+    res.json({ tagId, taggedCount, totalContacts });
   } catch (error: any) {
     console.error('Error getting sync status:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/servicetitan/test-availability', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const { getServiceTitanAvailability } = await import('../services/aiAgent/serviceTitanSearch');
+    const slots = await getServiceTitanAvailability(tenantId, { maxSlots: 5 });
+    
+    if (slots.length > 0) {
+      res.json({
+        success: true,
+        slots,
+        source: 'ServiceTitan Capacity API',
+      });
+    } else {
+      res.json({
+        success: true,
+        slots: [],
+        source: 'ServiceTitan Capacity API (no availability returned)',
+      });
+    }
+  } catch (error: any) {
+    console.error('Error testing ServiceTitan availability:', error);
+    res.status(500).json({ success: false, slots: [], error: error.message });
   }
 });
 

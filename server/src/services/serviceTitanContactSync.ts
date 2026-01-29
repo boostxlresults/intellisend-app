@@ -1,5 +1,5 @@
 import { prisma } from '../index';
-import { searchServiceTitanCustomer } from './aiAgent/serviceTitanSearch';
+import { searchServiceTitanCustomer, searchByAddress, searchByName } from './aiAgent/serviceTitanSearch';
 
 const SERVICE_TITAN_TAG_NAME = 'In ServiceTitan';
 
@@ -9,6 +9,9 @@ interface SyncResult {
   matchedContacts: number;
   newlyTagged: number;
   errors: number;
+  matchedByPhone?: number;
+  matchedByAddress?: number;
+  matchedByName?: number;
 }
 
 export async function syncServiceTitanContacts(tenantId: string): Promise<SyncResult> {
@@ -49,8 +52,13 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
     select: {
       id: true,
       phone: true,
+      email: true,
       firstName: true,
       lastName: true,
+      address: true,
+      city: true,
+      state: true,
+      zip: true,
       tags: {
         select: { tagId: true },
       },
@@ -62,6 +70,9 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
   let matchedContacts = 0;
   let newlyTagged = 0;
   let errors = 0;
+  let matchedByPhone = 0;
+  let matchedByAddress = 0;
+  let matchedByName = 0;
 
   for (const contact of contacts) {
     try {
@@ -72,20 +83,61 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
         continue;
       }
 
-      const searchResult = await searchServiceTitanCustomer(tenantId, contact.phone);
+      let found = false;
+      let matchType = '';
+
+      // 1. Try phone match first (most reliable)
+      if (contact.phone) {
+        const phoneResult = await searchServiceTitanCustomer(tenantId, contact.phone);
+        if (phoneResult.found && phoneResult.customers.length > 0) {
+          found = true;
+          matchType = 'phone';
+          matchedByPhone++;
+        }
+      }
+
+      // 2. Try address match if phone didn't match
+      if (!found && contact.address) {
+        const fullAddress = [contact.address, contact.city, contact.state, contact.zip]
+          .filter(Boolean).join(', ');
+        if (fullAddress.length > 5) {
+          const addressResult = await searchByAddress(tenantId, fullAddress);
+          if (addressResult.found && addressResult.locations.length > 0) {
+            found = true;
+            matchType = 'address';
+            matchedByAddress++;
+          }
+        }
+      }
+
+      // 3. Try name match as last resort
+      if (!found && contact.firstName && contact.lastName) {
+        const fullName = `${contact.firstName} ${contact.lastName}`;
+        const nameResult = await searchByName(tenantId, fullName);
+        if (nameResult.found && nameResult.customers.length > 0) {
+          found = true;
+          matchType = 'name';
+          matchedByName++;
+        }
+      }
       
-      if (searchResult.found && searchResult.customers.length > 0) {
+      if (found) {
         matchedContacts++;
         
-        await prisma.contactTag.create({
-          data: {
-            contactId: contact.id,
-            tagId: stTag!.id,
-          },
-        });
-        newlyTagged++;
-        
-        console.log(`[ServiceTitan Sync] Tagged contact ${contact.firstName} ${contact.lastName} (${contact.phone})`);
+        try {
+          await prisma.contactTag.create({
+            data: {
+              contactId: contact.id,
+              tagId: stTag!.id,
+            },
+          });
+          newlyTagged++;
+          console.log(`[ServiceTitan Sync] Tagged contact ${contact.firstName} ${contact.lastName} (matched by ${matchType})`);
+        } catch (tagError: any) {
+          if (!tagError.message?.includes('Unique constraint')) {
+            throw tagError;
+          }
+        }
       }
 
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -96,7 +148,7 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
     }
   }
 
-  console.log(`[ServiceTitan Sync] Completed: ${matchedContacts} matched, ${newlyTagged} newly tagged, ${errors} errors`);
+  console.log(`[ServiceTitan Sync] Completed: ${matchedContacts} matched (phone: ${matchedByPhone}, address: ${matchedByAddress}, name: ${matchedByName}), ${newlyTagged} newly tagged, ${errors} errors`);
 
   return {
     success: true,
@@ -104,6 +156,9 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
     matchedContacts,
     newlyTagged,
     errors,
+    matchedByPhone,
+    matchedByAddress,
+    matchedByName,
   };
 }
 
@@ -121,6 +176,13 @@ export async function syncSingleContact(tenantId: string, contactId: string): Pr
     select: {
       id: true,
       phone: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      address: true,
+      city: true,
+      state: true,
+      zip: true,
       tags: { select: { tagId: true } },
     },
   });
@@ -149,16 +211,52 @@ export async function syncSingleContact(tenantId: string, contactId: string): Pr
   }
 
   try {
-    const searchResult = await searchServiceTitanCustomer(tenantId, contact.phone);
+    let found = false;
+
+    // 1. Try phone match first (most reliable)
+    if (contact.phone) {
+      const phoneResult = await searchServiceTitanCustomer(tenantId, contact.phone);
+      if (phoneResult.found && phoneResult.customers.length > 0) {
+        found = true;
+      }
+    }
+
+    // 2. Try address match if phone didn't match
+    if (!found && contact.address) {
+      const fullAddress = [contact.address, contact.city, contact.state, contact.zip]
+        .filter(Boolean).join(', ');
+      if (fullAddress.length > 5) {
+        const addressResult = await searchByAddress(tenantId, fullAddress);
+        if (addressResult.found && addressResult.locations.length > 0) {
+          found = true;
+        }
+      }
+    }
+
+    // 3. Try name match as last resort
+    if (!found && contact.firstName && contact.lastName) {
+      const fullName = `${contact.firstName} ${contact.lastName}`;
+      const nameResult = await searchByName(tenantId, fullName);
+      if (nameResult.found && nameResult.customers.length > 0) {
+        found = true;
+      }
+    }
     
-    if (searchResult.found && searchResult.customers.length > 0) {
-      await prisma.contactTag.create({
-        data: {
-          contactId: contact.id,
-          tagId: stTag!.id,
-        },
-      });
-      return true;
+    if (found) {
+      try {
+        await prisma.contactTag.create({
+          data: {
+            contactId: contact.id,
+            tagId: stTag!.id,
+          },
+        });
+        return true;
+      } catch (tagError: any) {
+        if (!tagError.message?.includes('Unique constraint')) {
+          throw tagError;
+        }
+        return true;
+      }
     }
   } catch (error) {
     console.error(`[ServiceTitan Sync] Error syncing contact ${contactId}:`, error);

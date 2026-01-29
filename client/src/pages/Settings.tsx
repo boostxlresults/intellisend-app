@@ -52,6 +52,9 @@ export default function Settings() {
   });
   const [, setAiAgentConfig] = useState<AIAgentConfig | null>(null);
   const [savingAiAgent, setSavingAiAgent] = useState(false);
+  const [syncingContacts, setSyncingContacts] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ taggedCount: number; totalContacts: number } | null>(null);
+  const [testingAvailability, setTestingAvailability] = useState(false);
   const [aiAgentForm, setAiAgentForm] = useState({
     enabled: false,
     autoRespond: true,
@@ -75,9 +78,10 @@ export default function Settings() {
         api.getIntegrations(selectedTenant.id),
         api.getServiceTitanConfig(selectedTenant.id),
         api.getAIAgentConfig(selectedTenant.id),
+        api.getServiceTitanSyncStatus(selectedTenant.id),
       ]);
       
-      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult, aiAgentResult] = results;
+      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult, aiAgentResult, syncStatusResult] = results;
       
       if (numsResult.status === 'fulfilled') setNumbers(numsResult.value);
       if (suppsResult.status === 'fulfilled') setSuppressions(suppsResult.value);
@@ -111,6 +115,9 @@ export default function Settings() {
           defaultJobTypeId: aiData.defaultJobTypeId || '',
           defaultCampaignId: aiData.defaultCampaignId || '',
         });
+      }
+      if (syncStatusResult.status === 'fulfilled' && syncStatusResult.value) {
+        setSyncStatus(syncStatusResult.value);
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error);
@@ -346,6 +353,63 @@ export default function Settings() {
       alert('Failed to test ServiceTitan: ' + message);
     } finally {
       setTestingStConnection(false);
+    }
+  };
+
+  const handleSyncContacts = async () => {
+    if (!selectedTenant) return;
+    setSyncingContacts(true);
+    try {
+      const result = await api.syncServiceTitanContacts(selectedTenant.id);
+      if (result.success) {
+        alert(
+          `Contact Sync Complete!\n\n` +
+          `Total Contacts Checked: ${result.totalContacts}\n` +
+          `Found in ServiceTitan: ${result.matchedContacts}\n` +
+          `Newly Tagged: ${result.newlyTagged}\n` +
+          (result.errors > 0 ? `Errors: ${result.errors}` : '')
+        );
+        fetchData();
+      } else {
+        alert('Sync failed. Make sure ServiceTitan is configured and enabled.');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to sync contacts: ' + message);
+    } finally {
+      setSyncingContacts(false);
+    }
+  };
+
+  const handleTestAvailability = async () => {
+    if (!selectedTenant) return;
+    setTestingAvailability(true);
+    try {
+      const result = await api.testServiceTitanAvailability(selectedTenant.id);
+      if (result.success && result.slots.length > 0) {
+        const slotList = result.slots.slice(0, 5).map((s, i) => `${i + 1}. ${s.displayText}`).join('\n');
+        alert(
+          `ServiceTitan Availability Test - SUCCESS!\n\n` +
+          `Source: ${result.source || 'ServiceTitan API'}\n\n` +
+          `Available Slots:\n${slotList}\n\n` +
+          `The AI booking agent will present these real slots to customers.`
+        );
+      } else if (result.slots.length === 0) {
+        alert(
+          `ServiceTitan Availability Test - No Slots\n\n` +
+          `No availability slots were returned. This could mean:\n` +
+          `- No capacity available in the next 7 days\n` +
+          `- API returned empty data\n\n` +
+          `The AI will hand off to your CSR team instead of showing fake slots.`
+        );
+      } else {
+        alert('Availability test failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to test availability: ' + message);
+    } finally {
+      setTestingAvailability(false);
     }
   };
 
@@ -880,6 +944,45 @@ export default function Settings() {
                   </div>
                   <p style={{ fontSize: '12px', color: '#2f855a', marginTop: '8px' }}>
                     Inbound SMS replies will automatically create ServiceTitan Bookings to alert your team.
+                  </p>
+                </div>
+              )}
+              
+              {stConfig?.enabled && (
+                <div style={{ marginTop: '20px', padding: '16px', background: '#f7fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <h4 style={{ marginBottom: '12px', color: '#2d3748', fontSize: '14px' }}>Contact Sync & Testing</h4>
+                  <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px' }}>
+                    Sync your contacts to identify which ones exist in ServiceTitan. Matching contacts will be tagged with "In ServiceTitan" for targeting.
+                  </p>
+                  
+                  {syncStatus && (
+                    <div style={{ marginBottom: '12px', padding: '8px 12px', background: '#edf2f7', borderRadius: '4px', fontSize: '13px' }}>
+                      <strong>{syncStatus.taggedCount}</strong> of <strong>{syncStatus.totalContacts}</strong> contacts tagged as "In ServiceTitan"
+                    </div>
+                  )}
+                  
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleSyncContacts}
+                      disabled={syncingContacts}
+                      style={{ fontSize: '13px' }}
+                    >
+                      {syncingContacts ? 'Syncing...' : 'Sync Contacts Now'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleTestAvailability}
+                      disabled={testingAvailability}
+                      style={{ fontSize: '13px' }}
+                    >
+                      {testingAvailability ? 'Testing...' : 'Test Availability API'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#a0aec0', marginTop: '8px' }}>
+                    Contacts are synced nightly at midnight. Test Availability checks if real time slots are being returned from ServiceTitan.
                   </p>
                 </div>
               )}

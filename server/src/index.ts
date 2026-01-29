@@ -32,6 +32,7 @@ import { startCampaignScheduler } from './services/campaignScheduler';
 import { startQueueDispatcher } from './services/queueDispatcher';
 import { startSequenceProcessor } from './services/sequenceProcessor';
 import { startServiceTitanBookingProcessor } from './services/serviceTitanBookingProcessor';
+import { startNightlySyncScheduler } from './services/nightlySyncScheduler';
 
 dotenv.config();
 
@@ -126,6 +127,7 @@ async function main() {
     startQueueDispatcher();
     startSequenceProcessor();
     startServiceTitanBookingProcessor();
+    startNightlySyncScheduler();
     
     app.listen(PORT, () => {
       console.log(`IntelliSend server running on port ${PORT}`);

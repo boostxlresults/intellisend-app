@@ -696,6 +696,40 @@ export const api = {
       method: 'POST',
     }),
 
+  syncServiceTitanContacts: (tenantId: string) =>
+    request<{
+      success: boolean;
+      totalContacts: number;
+      matchedContacts: number;
+      newlyTagged: number;
+      errors: number;
+    }>(`${API_BASE}/tenants/${tenantId}/servicetitan/sync-contacts`, {
+      method: 'POST',
+    }),
+
+  getServiceTitanSyncStatus: (tenantId: string) =>
+    request<{
+      taggedCount: number;
+      totalContacts: number;
+      lastSync?: string;
+    }>(`${API_BASE}/tenants/${tenantId}/servicetitan/sync-status`),
+
+  testServiceTitanAvailability: (tenantId: string) =>
+    request<{
+      success: boolean;
+      slots: Array<{
+        date: string;
+        dayOfWeek: string;
+        startTime: string;
+        endTime: string;
+        displayText: string;
+      }>;
+      error?: string;
+      source?: string;
+    }>(`${API_BASE}/tenants/${tenantId}/servicetitan/test-availability`, {
+      method: 'POST',
+    }),
+
   getAIAgentConfig: (tenantId: string) =>
     request<AIAgentConfig>(`${API_BASE}/tenants/${tenantId}/ai-agent/config`),
 
