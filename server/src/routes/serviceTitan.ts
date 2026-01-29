@@ -125,4 +125,40 @@ router.post('/:tenantId/servicetitan-test', async (req, res) => {
   }
 });
 
+router.post('/:tenantId/servicetitan/sync-contacts', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const { syncServiceTitanContacts } = await import('../services/serviceTitanContactSync');
+    const result = await syncServiceTitanContacts(tenantId);
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error syncing ServiceTitan contacts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:tenantId/servicetitan/sync-status', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const { getServiceTitanTagId } = await import('../services/serviceTitanContactSync');
+    const tagId = await getServiceTitanTagId(tenantId);
+    
+    if (!tagId) {
+      return res.json({ tagId: null, taggedCount: 0 });
+    }
+    
+    const taggedCount = await prisma.contactTag.count({
+      where: { tagId },
+    });
+    
+    res.json({ tagId, taggedCount });
+  } catch (error: any) {
+    console.error('Error getting sync status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

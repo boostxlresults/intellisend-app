@@ -87,7 +87,7 @@ router.get('/:tenantId/segments', async (req, res) => {
 router.post('/:tenantId/segments', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { name, type, contactIds, tagFilter } = req.body;
+    const { name, type, contactIds, tagFilter, excludedTagIds } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
@@ -99,12 +99,25 @@ router.post('/:tenantId/segments', async (req, res) => {
       memberContactIds = await getContactsByTagFilter(tenantId, tagFilter);
     }
     
+    if (excludedTagIds && excludedTagIds.length > 0 && memberContactIds.length > 0) {
+      const contactsWithExcludedTags = await prisma.contactTag.findMany({
+        where: {
+          contactId: { in: memberContactIds },
+          tagId: { in: excludedTagIds },
+        },
+        select: { contactId: true },
+      });
+      const excludedContactIds = new Set(contactsWithExcludedTags.map(ct => ct.contactId));
+      memberContactIds = memberContactIds.filter((id: string) => !excludedContactIds.has(id));
+    }
+    
     const segment = await prisma.segment.create({
       data: {
         tenantId,
         name,
         type: type || 'STATIC',
         definitionJson: tagFilter ? JSON.stringify(tagFilter) : null,
+        excludedTagIds: excludedTagIds || [],
         members: memberContactIds.length > 0 ? {
           create: memberContactIds.map((contactId: string) => ({ contactId })),
         } : undefined,
@@ -225,8 +238,23 @@ router.post('/:tenantId/segments/:segmentId/members', async (req, res) => {
       return res.status(400).json({ error: 'contactIds must be an array' });
     }
     
+    let filteredContactIds = contactIds;
+    const excludedTagIds: string[] = (segment as any).excludedTagIds || [];
+    
+    if (excludedTagIds.length > 0 && contactIds.length > 0) {
+      const contactsWithExcludedTags = await prisma.contactTag.findMany({
+        where: {
+          contactId: { in: contactIds },
+          tagId: { in: excludedTagIds },
+        },
+        select: { contactId: true },
+      });
+      const excludedContactIds = new Set(contactsWithExcludedTags.map(ct => ct.contactId));
+      filteredContactIds = contactIds.filter((id: string) => !excludedContactIds.has(id));
+    }
+    
     const results = await Promise.all(
-      contactIds.map(async (contactId: string) => {
+      filteredContactIds.map(async (contactId: string) => {
         try {
           await prisma.segmentMember.create({
             data: { segmentId, contactId },
@@ -238,7 +266,8 @@ router.post('/:tenantId/segments/:segmentId/members', async (req, res) => {
       })
     );
     
-    res.json({ results });
+    const skipped = contactIds.length - filteredContactIds.length;
+    res.json({ results, skippedByExclusion: skipped });
   } catch (error: any) {
     console.error('Error adding segment members:', error);
     res.status(500).json({ error: error.message });

@@ -112,10 +112,29 @@ async function processScheduledCampaigns() {
       let skippedCount = 0;
       let suppressedCount = 0;
       
+      const excludedTagIds: string[] = (campaign as any).excludedTagIds || [];
+      
+      let excludedContactIds = new Set<string>();
+      if (excludedTagIds.length > 0) {
+        const contactsWithExcludedTags = await prisma.contactTag.findMany({
+          where: {
+            contactId: { in: campaign.segment.members.map(m => m.contact.id) },
+            tagId: { in: excludedTagIds },
+          },
+          select: { contactId: true },
+        });
+        excludedContactIds = new Set(contactsWithExcludedTags.map(ct => ct.contactId));
+      }
+      
       for (const member of campaign.segment.members) {
         const contact = member.contact;
         
         try {
+          if (excludedContactIds.has(contact.id)) {
+            skippedCount++;
+            continue;
+          }
+          
           const existingDelivery = await prisma.message.findFirst({
             where: {
               tenantId: campaign.tenantId,

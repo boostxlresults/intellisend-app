@@ -29,7 +29,7 @@ router.get('/:tenantId/campaigns', async (req, res) => {
 router.post('/:tenantId/campaigns', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { name, description, type, segmentId, steps } = req.body;
+    const { name, description, type, segmentId, steps, excludedTagIds } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
@@ -42,6 +42,7 @@ router.post('/:tenantId/campaigns', async (req, res) => {
         description,
         type: type || 'BLAST',
         segmentId,
+        excludedTagIds: excludedTagIds || [],
         steps: steps ? {
           create: steps.map((step: any, index: number) => ({
             order: index + 1,

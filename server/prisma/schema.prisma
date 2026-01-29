@@ -214,6 +214,7 @@ model Segment {
   name           String
   type           SegmentType @default(STATIC)
   definitionJson String?
+  excludedTagIds String[]    @default([])
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -259,6 +260,8 @@ model Campaign {
   startAt     DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  
+  excludedTagIds String[] @default([])
   
   complianceCheckedAt     DateTime?
   complianceCheckedBy     String?
