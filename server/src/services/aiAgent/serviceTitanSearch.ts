@@ -711,3 +711,343 @@ export function formatSlotsForSMS(slots: AvailabilitySlot[], maxToShow: number =
   const slotsToShow = slots.slice(0, maxToShow);
   return slotsToShow.map((slot, i) => `${i + 1}) ${slot.displayText}`).join('\n');
 }
+
+// ============================================================================
+// ENTERPRISE FEATURES: Job History, Memberships, Equipment, Estimates, Tags
+// ============================================================================
+
+export interface STJob {
+  id: number;
+  number: string;
+  customerId: number;
+  locationId: number;
+  jobTypeId?: number;
+  jobTypeName?: string;
+  summary?: string;
+  status?: string;
+  completedOn?: string;
+  createdOn?: string;
+  total?: number;
+}
+
+export interface STMembership {
+  id: number;
+  customerId: number;
+  membershipTypeId: number;
+  membershipTypeName?: string;
+  status: string;
+  from?: string;
+  to?: string;
+  recurringTotal?: number;
+}
+
+export interface STEquipment {
+  id: number;
+  customerId: number;
+  locationId: number;
+  name: string;
+  type?: string;
+  manufacturer?: string;
+  model?: string;
+  serialNumber?: string;
+  installedOn?: string;
+  warrantyEnd?: string;
+}
+
+export interface STEstimate {
+  id: number;
+  customerId: number;
+  locationId?: number;
+  status: string;
+  name?: string;
+  summary?: string;
+  total?: number;
+  createdOn?: string;
+  expiresOn?: string;
+}
+
+export interface STTag {
+  id: number;
+  name: string;
+}
+
+export interface EnterpriseCustomerContext {
+  recentJobs: STJob[];
+  activeMemberships: STMembership[];
+  equipment: STEquipment[];
+  pendingEstimates: STEstimate[];
+  customerTags: STTag[];
+  isMember: boolean;
+  lastServiceDate?: string;
+  lastServiceType?: string;
+  totalJobsCompleted: number;
+  lifetimeValue: number;
+}
+
+export async function getEnterpriseCustomerContext(
+  tenantId: string,
+  customerId: number
+): Promise<EnterpriseCustomerContext | null> {
+  const config = await prisma.serviceTitanConfig.findUnique({
+    where: { tenantId },
+  });
+
+  if (!config || !config.enabled) {
+    return null;
+  }
+
+  try {
+    const token = await getServiceTitanToken(config);
+    if (!token) return null;
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'ST-App-Key': config.appKey,
+      'Content-Type': 'application/json',
+    };
+
+    const results = await Promise.allSettled([
+      fetchJobHistory(config, headers, customerId),
+      fetchMemberships(config, headers, customerId),
+      fetchEquipment(config, headers, customerId),
+      fetchEstimates(config, headers, customerId),
+      fetchCustomerTags(config, headers, customerId),
+    ]);
+
+    const [jobsResult, membershipsResult, equipmentResult, estimatesResult, tagsResult] = results;
+
+    const recentJobs = jobsResult.status === 'fulfilled' ? jobsResult.value : [];
+    const activeMemberships = membershipsResult.status === 'fulfilled' ? membershipsResult.value : [];
+    const equipment = equipmentResult.status === 'fulfilled' ? equipmentResult.value : [];
+    const pendingEstimates = estimatesResult.status === 'fulfilled' ? estimatesResult.value : [];
+    const customerTags = tagsResult.status === 'fulfilled' ? tagsResult.value : [];
+
+    const completedJobs = recentJobs.filter(j => j.status === 'Completed' || j.completedOn);
+    const lastCompletedJob = completedJobs[0];
+    
+    const lifetimeValue = completedJobs.reduce((sum, job) => sum + (job.total || 0), 0);
+
+    return {
+      recentJobs,
+      activeMemberships,
+      equipment,
+      pendingEstimates,
+      customerTags,
+      isMember: activeMemberships.length > 0,
+      lastServiceDate: lastCompletedJob?.completedOn,
+      lastServiceType: lastCompletedJob?.jobTypeName || lastCompletedJob?.summary,
+      totalJobsCompleted: completedJobs.length,
+      lifetimeValue,
+    };
+  } catch (error) {
+    console.error('[ServiceTitan] Enterprise context fetch error:', error);
+    return null;
+  }
+}
+
+async function fetchJobHistory(
+  config: any,
+  headers: Record<string, string>,
+  customerId: number
+): Promise<STJob[]> {
+  try {
+    const url = `${config.tenantApiBaseUrl}/jpm/v2/tenant/${config.serviceTitanTenantId}/jobs?customerId=${customerId}&pageSize=10&sort=-completedOn`;
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      console.log(`[ServiceTitan] Job history fetch returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { data?: any[] };
+    return (data.data || []).map((job: any) => ({
+      id: job.id,
+      number: job.number,
+      customerId: job.customerId,
+      locationId: job.locationId,
+      jobTypeId: job.jobTypeId,
+      jobTypeName: job.jobType?.name,
+      summary: job.summary,
+      status: job.status,
+      completedOn: job.completedOn,
+      createdOn: job.createdOn,
+      total: job.total,
+    }));
+  } catch (error) {
+    console.error('[ServiceTitan] Job history error:', error);
+    return [];
+  }
+}
+
+async function fetchMemberships(
+  config: any,
+  headers: Record<string, string>,
+  customerId: number
+): Promise<STMembership[]> {
+  try {
+    const url = `${config.tenantApiBaseUrl}/memberships/v2/tenant/${config.serviceTitanTenantId}/memberships?customerId=${customerId}&status=Active&pageSize=10`;
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      console.log(`[ServiceTitan] Memberships fetch returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { data?: any[] };
+    return (data.data || []).map((m: any) => ({
+      id: m.id,
+      customerId: m.customerId,
+      membershipTypeId: m.membershipTypeId,
+      membershipTypeName: m.membershipType?.name,
+      status: m.status,
+      from: m.from,
+      to: m.to,
+      recurringTotal: m.recurringTotal,
+    }));
+  } catch (error) {
+    console.error('[ServiceTitan] Memberships error:', error);
+    return [];
+  }
+}
+
+async function fetchEquipment(
+  config: any,
+  headers: Record<string, string>,
+  customerId: number
+): Promise<STEquipment[]> {
+  try {
+    const url = `${config.tenantApiBaseUrl}/equipmentsystems/v2/tenant/${config.serviceTitanTenantId}/installed-equipment?customerId=${customerId}&pageSize=20`;
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      console.log(`[ServiceTitan] Equipment fetch returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { data?: any[] };
+    return (data.data || []).map((e: any) => ({
+      id: e.id,
+      customerId: e.customerId,
+      locationId: e.locationId,
+      name: e.name || e.equipmentType,
+      type: e.equipmentType,
+      manufacturer: e.manufacturer,
+      model: e.model,
+      serialNumber: e.serialNumber,
+      installedOn: e.installedOn,
+      warrantyEnd: e.warrantyExpirationDate,
+    }));
+  } catch (error) {
+    console.error('[ServiceTitan] Equipment error:', error);
+    return [];
+  }
+}
+
+async function fetchEstimates(
+  config: any,
+  headers: Record<string, string>,
+  customerId: number
+): Promise<STEstimate[]> {
+  try {
+    const url = `${config.tenantApiBaseUrl}/sales/v2/tenant/${config.serviceTitanTenantId}/estimates?customerId=${customerId}&status=Open&pageSize=10`;
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      console.log(`[ServiceTitan] Estimates fetch returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { data?: any[] };
+    return (data.data || []).map((e: any) => ({
+      id: e.id,
+      customerId: e.customerId,
+      locationId: e.locationId,
+      status: e.status,
+      name: e.name,
+      summary: e.summary,
+      total: e.total,
+      createdOn: e.createdOn,
+      expiresOn: e.expiresOn,
+    }));
+  } catch (error) {
+    console.error('[ServiceTitan] Estimates error:', error);
+    return [];
+  }
+}
+
+async function fetchCustomerTags(
+  config: any,
+  headers: Record<string, string>,
+  customerId: number
+): Promise<STTag[]> {
+  try {
+    const url = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers/${customerId}`;
+    const response = await fetch(url, { headers });
+    
+    if (!response.ok) {
+      console.log(`[ServiceTitan] Customer tags fetch returned ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { tagTypeIds?: number[] };
+    const tagTypeIds = data.tagTypeIds || [];
+    
+    if (tagTypeIds.length === 0) return [];
+
+    const tagsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/tag-types?ids=${tagTypeIds.join(',')}`;
+    const tagsResponse = await fetch(tagsUrl, { headers });
+    
+    if (!tagsResponse.ok) return [];
+
+    const tagsData = await tagsResponse.json() as { data?: any[] };
+    return (tagsData.data || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+    }));
+  } catch (error) {
+    console.error('[ServiceTitan] Customer tags error:', error);
+    return [];
+  }
+}
+
+export function formatEnterpriseContextForAI(context: EnterpriseCustomerContext): string {
+  const lines: string[] = [];
+
+  if (context.isMember) {
+    const membershipNames = context.activeMemberships.map(m => m.membershipTypeName || 'Service Plan').join(', ');
+    lines.push(`MEMBER STATUS: Active member (${membershipNames}) - Treat as VIP!`);
+  }
+
+  if (context.lastServiceDate && context.lastServiceType) {
+    const date = new Date(context.lastServiceDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    lines.push(`LAST SERVICE: ${context.lastServiceType} in ${date}`);
+  }
+
+  if (context.totalJobsCompleted > 0) {
+    lines.push(`CUSTOMER HISTORY: ${context.totalJobsCompleted} completed jobs, $${context.lifetimeValue.toLocaleString()} lifetime value`);
+  }
+
+  if (context.pendingEstimates.length > 0) {
+    const estimateNames = context.pendingEstimates.map(e => e.name || e.summary || 'Pending estimate').slice(0, 2).join(', ');
+    lines.push(`PENDING ESTIMATES: ${context.pendingEstimates.length} open (${estimateNames})`);
+  }
+
+  if (context.equipment.length > 0) {
+    const equipmentList = context.equipment.slice(0, 3).map(e => {
+      let desc = e.name || e.type || 'Equipment';
+      if (e.installedOn) {
+        const installYear = new Date(e.installedOn).getFullYear();
+        const age = new Date().getFullYear() - installYear;
+        desc += ` (${age} years old)`;
+      }
+      return desc;
+    }).join(', ');
+    lines.push(`EQUIPMENT ON FILE: ${equipmentList}`);
+  }
+
+  if (context.customerTags.length > 0) {
+    lines.push(`CUSTOMER TAGS: ${context.customerTags.map(t => t.name).join(', ')}`);
+  }
+
+  return lines.join('\n');
+}

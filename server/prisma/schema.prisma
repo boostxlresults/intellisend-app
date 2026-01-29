@@ -818,6 +818,11 @@ model AIAgentSession {
   stAddressOnFile         String?
   stCityOnFile            String?
   stStateOnFile           String?
+  stEnterpriseContext     String?   // Formatted context: job history, memberships, equipment, estimates
+  stIsMember              Boolean   @default(false)
+  stLastServiceDate       String?
+  stLastServiceType       String?
+  stPendingEstimateCount  Int       @default(0)
   
   // Tracking
   offerContextId      String?

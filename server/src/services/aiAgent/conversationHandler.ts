@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { prisma } from '../../index';
 import { classifyIntent, CustomerIntent } from './intentClassifier';
-import { searchServiceTitanCustomer, searchByAddress, searchByName, createServiceTitanCustomer, createServiceTitanJob, getServiceTitanAvailability, formatSlotsForSMS, AvailabilitySlot } from './serviceTitanSearch';
+import { searchServiceTitanCustomer, searchByAddress, searchByName, createServiceTitanCustomer, createServiceTitanJob, getServiceTitanAvailability, formatSlotsForSMS, AvailabilitySlot, getEnterpriseCustomerContext, formatEnterpriseContextForAI, EnterpriseCustomerContext } from './serviceTitanSearch';
 import { createBookingFromInboundSms, CreateBookingFromInboundSmsOptions } from '../serviceTitanClient';
 import { buildConversationSummary } from '../conversationSummary';
 import { getActivePersonaForTenant, getKnowledgeSnippetsForTenant } from '../../ai/aiEngine';
@@ -116,6 +116,11 @@ export async function handleInboundMessage(
         stAddressOnFile: stCustomerContext?.address || null,
         stCityOnFile: stCustomerContext?.city || null,
         stStateOnFile: stCustomerContext?.state || null,
+        stEnterpriseContext: stCustomerContext?.enterpriseContext || null,
+        stIsMember: stCustomerContext?.isMember || false,
+        stLastServiceDate: stCustomerContext?.lastServiceDate || null,
+        stLastServiceType: stCustomerContext?.lastServiceType || null,
+        stPendingEstimateCount: stCustomerContext?.pendingEstimateCount || 0,
       },
       include: { offerContext: true },
     });
@@ -125,6 +130,11 @@ export async function handleInboundMessage(
     session.stAddressOnFile = updatedSession.stAddressOnFile;
     session.stCityOnFile = updatedSession.stCityOnFile;
     session.stStateOnFile = updatedSession.stStateOnFile;
+    session.stEnterpriseContext = updatedSession.stEnterpriseContext;
+    session.stIsMember = updatedSession.stIsMember;
+    session.stLastServiceDate = updatedSession.stLastServiceDate;
+    session.stLastServiceType = updatedSession.stLastServiceType;
+    session.stPendingEstimateCount = updatedSession.stPendingEstimateCount;
   }
 
   console.log(`[AI Agent] Classifying intent for message: "${messageBody.substring(0, 50)}..."`);
@@ -1058,6 +1068,12 @@ interface ServiceTitanCustomerContext {
   city?: string;
   state?: string;
   customerName?: string;
+  stCustomerId?: number;
+  enterpriseContext?: string;
+  isMember?: boolean;
+  lastServiceDate?: string;
+  lastServiceType?: string;
+  pendingEstimateCount?: number;
 }
 
 async function getServiceTitanCustomerContext(
@@ -1104,12 +1120,39 @@ async function getServiceTitanCustomerContext(
       
       console.log(`[AI Agent] Found ServiceTitan customer: ${customer.name}, address: ${location?.address?.street || 'none'}`);
       
+      // Fetch enterprise context (job history, memberships, equipment, estimates, tags)
+      let enterpriseContext: string | undefined;
+      let isMember = false;
+      let lastServiceDate: string | undefined;
+      let lastServiceType: string | undefined;
+      let pendingEstimateCount = 0;
+      
+      try {
+        const enterpriseData = await getEnterpriseCustomerContext(tenantId, customer.id);
+        if (enterpriseData) {
+          enterpriseContext = formatEnterpriseContextForAI(enterpriseData);
+          isMember = enterpriseData.isMember;
+          lastServiceDate = enterpriseData.lastServiceDate;
+          lastServiceType = enterpriseData.lastServiceType;
+          pendingEstimateCount = enterpriseData.pendingEstimates.length;
+          console.log(`[AI Agent] Enterprise context loaded: member=${isMember}, jobs=${enterpriseData.totalJobsCompleted}, estimates=${pendingEstimateCount}`);
+        }
+      } catch (err) {
+        console.error('[AI Agent] Error fetching enterprise context:', err);
+      }
+      
       return {
         isExistingCustomer: true,
         address: location?.address?.street,
         city: location?.address?.city,
         state: location?.address?.state,
         customerName: customer.name,
+        stCustomerId: customer.id,
+        enterpriseContext,
+        isMember,
+        lastServiceDate,
+        lastServiceType,
+        pendingEstimateCount,
       };
     }
 
@@ -1146,6 +1189,11 @@ async function generateResponse(
         city: session.stCityOnFile || undefined,
         state: session.stStateOnFile || undefined,
         customerName: session.confirmedName || undefined,
+        enterpriseContext: session.stEnterpriseContext || undefined,
+        isMember: session.stIsMember || false,
+        lastServiceDate: session.stLastServiceDate || undefined,
+        lastServiceType: session.stLastServiceType || undefined,
+        pendingEstimateCount: session.stPendingEstimateCount || 0,
       }
     : null;
 
@@ -1188,11 +1236,20 @@ RULES:
     let existingCustomerContext = '';
     if (stCustomerContext?.isExistingCustomer) {
       existingCustomerContext = `\n- EXISTING CUSTOMER: Yes, they have an account with us!`;
+      if (stCustomerContext.isMember) {
+        existingCustomerContext += `\n- VIP MEMBER: This customer is an active service plan member - treat with priority!`;
+      }
       if (stCustomerContext.address) {
         existingCustomerContext += `\n- Address on file: ${stCustomerContext.address}${stCustomerContext.city ? `, ${stCustomerContext.city}` : ''}${stCustomerContext.state ? `, ${stCustomerContext.state}` : ''}`;
       }
       if (stCustomerContext.customerName && stCustomerContext.customerName !== contact.firstName) {
         existingCustomerContext += `\n- Name on account: ${stCustomerContext.customerName}`;
+      }
+      if (stCustomerContext.enterpriseContext) {
+        existingCustomerContext += `\n\nCUSTOMER HISTORY (from ServiceTitan):\n${stCustomerContext.enterpriseContext}`;
+      }
+      if (stCustomerContext.pendingEstimateCount && stCustomerContext.pendingEstimateCount > 0) {
+        existingCustomerContext += `\n- TIP: Customer has ${stCustomerContext.pendingEstimateCount} pending estimate(s) - consider asking if they'd like to proceed with any!`;
       }
     }
 
