@@ -353,4 +353,64 @@ router.patch('/:tenantId/contacts/:contactId', async (req, res) => {
   }
 });
 
+router.delete('/:tenantId/contacts/:contactId', async (req, res) => {
+  try {
+    const { tenantId, contactId } = req.params;
+    
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, tenantId },
+    });
+    
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    
+    await prisma.contact.delete({
+      where: { id: contactId },
+    });
+    
+    res.json({ success: true, message: 'Contact deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:tenantId/contacts/bulk/by-tag/:tagId', async (req, res) => {
+  try {
+    const { tenantId, tagId } = req.params;
+    
+    const tag = await prisma.tag.findFirst({
+      where: { id: tagId, tenantId },
+    });
+    
+    if (!tag) {
+      return res.status(404).json({ error: 'Tag not found' });
+    }
+    
+    const contactsWithTag = await prisma.contactTag.findMany({
+      where: { tagId },
+      select: { contactId: true },
+    });
+    
+    const contactIds = contactsWithTag.map(ct => ct.contactId);
+    
+    if (contactIds.length === 0) {
+      return res.json({ success: true, deletedCount: 0 });
+    }
+    
+    const result = await prisma.contact.deleteMany({
+      where: {
+        id: { in: contactIds },
+        tenantId,
+      },
+    });
+    
+    res.json({ success: true, deletedCount: result.count, tagName: tag.name });
+  } catch (error: any) {
+    console.error('Error bulk deleting contacts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

@@ -160,6 +160,19 @@ export default function ContactDetail() {
     }
   };
 
+  const handleDeleteContact = async () => {
+    if (!selectedTenant || !contact) return;
+    if (!window.confirm(`Are you sure you want to delete ${contact.firstName} ${contact.lastName}? This will also remove all their conversation history and cannot be undone.`)) return;
+    
+    try {
+      await api.deleteContact(selectedTenant.id, contact.id);
+      navigate('/contacts');
+    } catch (error) {
+      console.error('Failed to delete contact:', error);
+      alert('Failed to delete contact');
+    }
+  };
+
   if (loading) {
     return <p>Loading contact...</p>;
   }
@@ -177,9 +190,18 @@ export default function ContactDetail() {
           </Link>
           <h2 style={{ marginTop: '8px' }}>{contact.firstName} {contact.lastName}</h2>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowMessageModal(true)}>
-          Send Message
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn btn-primary" onClick={() => setShowMessageModal(true)}>
+            Send Message
+          </button>
+          <button 
+            className="btn" 
+            onClick={handleDeleteContact}
+            style={{ backgroundColor: '#e53e3e', color: 'white' }}
+          >
+            Delete Contact
+          </button>
+        </div>
       </div>
       
       <div className="grid-2">

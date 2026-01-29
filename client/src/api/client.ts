@@ -310,6 +310,16 @@ export const api = {
   getContact: (tenantId: string, contactId: string) =>
     request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}`),
   
+  deleteContact: (tenantId: string, contactId: string) =>
+    request<{ success: boolean; message: string }>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}`, {
+      method: 'DELETE',
+    }),
+  
+  deleteContactsByTag: (tenantId: string, tagId: string) =>
+    request<{ success: boolean; deletedCount: number; tagName: string }>(`${API_BASE}/tenants/${tenantId}/contacts/bulk/by-tag/${tagId}`, {
+      method: 'DELETE',
+    }),
+  
   addContactTag: (tenantId: string, contactId: string, tag: string) =>
     request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/tags`, {
       method: 'POST',
@@ -713,6 +723,7 @@ export const api = {
       totalFetched: number;
       imported: number;
       skippedDuplicates: number;
+      skippedDoNotContact: number;
       errors: number;
     }>(`${API_BASE}/tenants/${tenantId}/servicetitan/import-contacts`, {
       method: 'POST',

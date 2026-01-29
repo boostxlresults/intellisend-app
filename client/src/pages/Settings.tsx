@@ -56,6 +56,8 @@ export default function Settings() {
   const [syncStatus, setSyncStatus] = useState<{ taggedCount: number; totalContacts: number } | null>(null);
   const [testingAvailability, setTestingAvailability] = useState(false);
   const [importingContacts, setImportingContacts] = useState(false);
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
   const [aiAgentForm, setAiAgentForm] = useState({
     enabled: false,
     autoRespond: true,
@@ -80,9 +82,10 @@ export default function Settings() {
         api.getServiceTitanConfig(selectedTenant.id),
         api.getAIAgentConfig(selectedTenant.id),
         api.getServiceTitanSyncStatus(selectedTenant.id),
+        api.getTags(selectedTenant.id),
       ]);
       
-      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult, aiAgentResult, syncStatusResult] = results;
+      const [numsResult, suppsResult, persResult, settingsResult, integrationsResult, stConfigResult, aiAgentResult, syncStatusResult, tagsResult] = results;
       
       if (numsResult.status === 'fulfilled') setNumbers(numsResult.value);
       if (suppsResult.status === 'fulfilled') setSuppressions(suppsResult.value);
@@ -119,6 +122,9 @@ export default function Settings() {
       }
       if (syncStatusResult.status === 'fulfilled' && syncStatusResult.value) {
         setSyncStatus(syncStatusResult.value);
+      }
+      if (tagsResult.status === 'fulfilled') {
+        setAllTags(tagsResult.value);
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error);
@@ -432,6 +438,7 @@ export default function Settings() {
           `Customers Found: ${result.totalFetched}\n` +
           `New Contacts Imported: ${result.imported}\n` +
           `Skipped (Already Exist): ${result.skippedDuplicates}\n` +
+          (result.skippedDoNotContact > 0 ? `Skipped (Do Not Service/Mail): ${result.skippedDoNotContact}\n` : '') +
           (result.errors > 0 ? `Errors: ${result.errors}` : '') +
           `\n\nAll imported contacts have been tagged with "In ServiceTitan".`
         );
@@ -469,6 +476,25 @@ export default function Settings() {
       alert('Failed to save AI Agent config: ' + message);
     } finally {
       setSavingAiAgent(false);
+    }
+  };
+
+  const handleBulkDeleteByTag = async (tagId: string, tagName: string) => {
+    if (!selectedTenant) return;
+    if (!window.confirm(`Are you sure you want to DELETE ALL CONTACTS with the "${tagName}" tag? This action cannot be undone and will also delete their conversation history.`)) return;
+    
+    setDeletingTagId(tagId);
+    try {
+      const result = await api.deleteContactsByTag(selectedTenant.id, tagId);
+      if (result.success) {
+        alert(`Successfully deleted ${result.deletedCount} contacts with the "${tagName}" tag.`);
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Failed to bulk delete contacts:', error);
+      alert('Failed to delete contacts');
+    } finally {
+      setDeletingTagId(null);
     }
   };
 
@@ -1177,6 +1203,55 @@ export default function Settings() {
                 </div>
               )}
             </form>
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginBottom: '16px' }}>Tag Management</h3>
+            <p style={{ fontSize: '13px', color: '#718096', marginBottom: '16px' }}>
+              Manage contact tags and perform bulk operations. <strong style={{ color: '#e53e3e' }}>Warning:</strong> Deleting contacts is permanent and cannot be undone.
+            </p>
+            
+            {allTags.length === 0 ? (
+              <p style={{ fontSize: '13px', color: '#a0aec0' }}>No tags found. Tags are created when contacts are imported or tagged.</p>
+            ) : (
+              <table className="data-table" style={{ marginTop: '16px' }}>
+                <thead>
+                  <tr>
+                    <th>Tag</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTags.map(tag => (
+                    <tr key={tag.id}>
+                      <td>
+                        <span style={{ 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '4px 10px',
+                          background: tag.color || '#e2e8f0',
+                          borderRadius: '12px',
+                          fontSize: '12px'
+                        }}>
+                          {tag.name}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          style={{ fontSize: '11px', padding: '4px 10px' }}
+                          onClick={() => handleBulkDeleteByTag(tag.id, tag.name)}
+                          disabled={deletingTagId === tag.id}
+                        >
+                          {deletingTagId === tag.id ? 'Deleting...' : 'Delete All Contacts'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}

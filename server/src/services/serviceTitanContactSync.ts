@@ -285,6 +285,8 @@ interface STCustomerImport {
   };
   phoneSettings?: Array<{ phoneNumber: string; type: string }>;
   email?: string;
+  doNotService?: boolean;
+  doNotMail?: boolean;
 }
 
 interface ImportResult {
@@ -292,6 +294,7 @@ interface ImportResult {
   totalFetched: number;
   imported: number;
   skippedDuplicates: number;
+  skippedDoNotContact: number;
   errors: number;
 }
 
@@ -309,6 +312,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       totalFetched: 0,
       imported: 0,
       skippedDuplicates: 0,
+      skippedDoNotContact: 0,
       errors: 0,
     };
   }
@@ -321,6 +325,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       totalFetched: 0,
       imported: 0,
       skippedDuplicates: 0,
+      skippedDoNotContact: 0,
       errors: 0,
     };
   }
@@ -355,6 +360,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   let totalFetched = 0;
   let imported = 0;
   let skippedDuplicates = 0;
+  let skippedDoNotContact = 0;
   let errors = 0;
   let page = 1;
   const pageSize = 50;
@@ -389,6 +395,12 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
 
       for (const customer of customers) {
         try {
+          // Skip customers marked as Do Not Service or Do Not Mail
+          if (customer.doNotService || customer.doNotMail) {
+            skippedDoNotContact++;
+            continue;
+          }
+
           const primaryPhone = customer.phoneSettings?.[0]?.phoneNumber;
           if (!primaryPhone) {
             continue;
@@ -456,13 +468,14 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     }
   }
 
-  console.log(`[ServiceTitan Import] Completed: ${totalFetched} fetched, ${imported} imported, ${skippedDuplicates} skipped, ${errors} errors`);
+  console.log(`[ServiceTitan Import] Completed: ${totalFetched} fetched, ${imported} imported, ${skippedDuplicates} duplicates, ${skippedDoNotContact} do-not-contact, ${errors} errors`);
 
   return {
     success: !apiError,
     totalFetched,
     imported,
     skippedDuplicates,
+    skippedDoNotContact,
     errors,
   };
 }
