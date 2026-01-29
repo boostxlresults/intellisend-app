@@ -84,7 +84,8 @@ export async function getServiceTitanToken(config: {
     });
 
     if (!response.ok) {
-      console.error(`[ServiceTitan] Token fetch failed: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`[ServiceTitan] Token fetch failed: ${response.status} ${response.statusText} - ${errorText}`);
       return null;
     }
 

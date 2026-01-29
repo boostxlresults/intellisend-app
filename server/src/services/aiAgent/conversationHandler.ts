@@ -344,6 +344,7 @@ async function handleBookingIntent(
       };
     }
     
+    console.log(`[AI Agent] Setting session customer from phone search: stCustomerId=${customer.id}, stLocationId=${location?.id}`);
     await prisma.aIAgentSession.update({
       where: { id: session.id },
       data: {
@@ -520,6 +521,7 @@ async function handleBookingIntent(
 
   console.log(`[AI Agent] Create customer result: ${createResult ? `customerId=${createResult.customerId}` : 'failed/null'}`);
   if (createResult) {
+    console.log(`[AI Agent] Setting session customer from creation: stCustomerId=${createResult.customerId}, stLocationId=${createResult.locationId}`);
     await prisma.aIAgentSession.update({
       where: { id: session.id },
       data: {
@@ -527,6 +529,8 @@ async function handleBookingIntent(
         stLocationId: String(createResult.locationId),
       },
     });
+  } else {
+    console.error(`[AI Agent] WARNING: Customer creation returned null - session will NOT have stCustomerId`);
   }
   
   console.log(`[AI Agent] Calling proposeAvailableTimes`);
@@ -588,8 +592,10 @@ async function handleTimeSlotSelection(
   contact: any,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
 ): Promise<AIAgentResponse> {
+  console.log(`[AI Agent] handleTimeSlotSelection: sessionId=${session.id}, stCustomerId=${session.stCustomerId}, stLocationId=${session.stLocationId}`);
   try {
     const lastMessage = conversationHistory[conversationHistory.length - 1]?.body || '';
+    console.log(`[AI Agent] Last message for slot selection: "${lastMessage}"`);
     
     const slotMatch = lastMessage.match(/\b([1-4])\b/);
   if (!slotMatch) {

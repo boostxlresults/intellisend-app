@@ -57,11 +57,17 @@ export async function searchServiceTitanCustomer(
   });
 
   if (!config || !config.enabled) {
+    console.log(`[ServiceTitan] Customer search: No config or not enabled for tenant ${tenantId}`);
     return { found: false, customers: [], locations: [] };
   }
 
   try {
     const token = await getServiceTitanToken(config);
+    if (!token) {
+      console.error(`[ServiceTitan] Customer search: Failed to get auth token for tenant ${tenantId}`);
+      return { found: false, customers: [], locations: [] };
+    }
+    
     const headers = {
       'Authorization': `Bearer ${token}`,
       'ST-App-Key': config.appKey,
@@ -69,20 +75,25 @@ export async function searchServiceTitanCustomer(
     };
 
     const normalizedPhone = normalizePhone(phone);
+    console.log(`[ServiceTitan] Customer search: Original phone "${phone}" → Normalized "${normalizedPhone}"`);
     
     const customerUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers?phone=${encodeURIComponent(normalizedPhone)}&pageSize=10`;
+    console.log(`[ServiceTitan] Customer search URL: ${customerUrl}`);
     
     const customerResponse = await fetch(customerUrl, { headers });
     
     if (!customerResponse.ok) {
-      console.error('ST customer search failed:', await customerResponse.text());
+      const errorText = await customerResponse.text();
+      console.error(`[ServiceTitan] Customer search failed: ${customerResponse.status} - ${errorText}`);
       return { found: false, customers: [], locations: [] };
     }
 
     const customerData = await customerResponse.json() as { data?: STCustomer[] };
     const customers: STCustomer[] = customerData.data || [];
+    console.log(`[ServiceTitan] Customer search found ${customers.length} customers for phone "${normalizedPhone}"`);
 
     if (customers.length === 0) {
+      console.log(`[ServiceTitan] No customers found for phone "${normalizedPhone}"`);
       return { found: false, customers: [], locations: [] };
     }
 
@@ -321,11 +332,19 @@ export async function createServiceTitanCustomer(
   });
 
   if (!config || !config.enabled) {
+    console.log(`[ServiceTitan] Create customer: No config or not enabled for tenant ${tenantId}`);
     return null;
   }
 
+  console.log(`[ServiceTitan] Creating customer: name="${data.name}", phone="${data.phone}", address="${data.address.street}, ${data.address.city}"`);
+  
   try {
     const token = await getServiceTitanToken(config);
+    if (!token) {
+      console.error(`[ServiceTitan] Create customer: Failed to get auth token`);
+      return null;
+    }
+    
     const headers = {
       'Authorization': `Bearer ${token}`,
       'ST-App-Key': config.appKey,
@@ -351,6 +370,8 @@ export async function createServiceTitanCustomer(
       email: data.email || undefined,
     };
 
+    console.log(`[ServiceTitan] Create customer payload:`, JSON.stringify(customerPayload));
+    
     const customerUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers`;
     const customerResponse = await fetch(customerUrl, {
       method: 'POST',
@@ -359,7 +380,8 @@ export async function createServiceTitanCustomer(
     });
 
     if (!customerResponse.ok) {
-      console.error('ST customer create failed:', await customerResponse.text());
+      const errorText = await customerResponse.text();
+      console.error(`[ServiceTitan] Create customer failed: ${customerResponse.status} - ${errorText}`);
       return null;
     }
 
@@ -500,14 +522,16 @@ export async function createServiceTitanJob(
 }
 
 function normalizePhone(phone: string): string {
+  // ServiceTitan expects 10-digit format without +1 prefix
   const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `+1${digits}`;
-  }
   if (digits.length === 11 && digits.startsWith('1')) {
-    return `+${digits}`;
+    return digits.slice(1); // Remove leading 1
   }
-  return phone;
+  if (digits.length === 10) {
+    return digits; // Return 10 digits as-is
+  }
+  console.log(`[ServiceTitan] Phone normalization: unusual format "${phone}" → "${digits}"`);
+  return digits;
 }
 
 function getNextAvailableSlot(preference?: string): Date {
@@ -549,9 +573,11 @@ export async function getServiceTitanAvailability(
   });
 
   if (!config || !config.enabled) {
+    console.error(`[ServiceTitan] FALLBACK: No config or not enabled for tenant ${tenantId}`);
     return generateFallbackSlots(options.maxSlots || 5);
   }
 
+  console.log(`[ServiceTitan] Fetching real availability from ServiceTitan for tenant ${tenantId}`);
   try {
     const token = await getServiceTitanToken(config);
     const headers = {
@@ -574,7 +600,8 @@ export async function getServiceTitanAvailability(
     const capacityResponse = await fetch(capacityUrl, { headers });
     
     if (!capacityResponse.ok) {
-      console.error('[ServiceTitan] Capacity API error:', capacityResponse.status, await capacityResponse.text());
+      const errorText = await capacityResponse.text();
+      console.error(`[ServiceTitan] FALLBACK: Capacity API error ${capacityResponse.status}: ${errorText}`);
       return generateFallbackSlots(options.maxSlots || 5);
     }
 
@@ -588,6 +615,7 @@ export async function getServiceTitanAvailability(
     };
 
     if (!capacityData.data || capacityData.data.length === 0) {
+      console.error(`[ServiceTitan] FALLBACK: No capacity data returned from API`);
       return generateFallbackSlots(options.maxSlots || 5);
     }
 
@@ -626,12 +654,21 @@ export async function getServiceTitanAvailability(
     return slots;
 
   } catch (error) {
-    console.error('[ServiceTitan] Availability lookup error:', error);
+    console.error('[ServiceTitan] FALLBACK: Availability lookup exception:', error);
     return generateFallbackSlots(options.maxSlots || 5);
   }
 }
 
 function generateFallbackSlots(count: number): AvailabilitySlot[] {
+  // CRITICAL: Return empty array to trigger CSR handoff instead of fake slots
+  // Production systems should never present fake availability to customers
+  console.error(`[ServiceTitan] CRITICAL: Availability API failed - returning EMPTY to trigger CSR handoff (no fake slots)`);
+  return []; // This will trigger handoffToCSR in proposeAvailableTimes
+}
+
+// Keep original function for reference/testing only
+function _generateFallbackSlotsDisabled(count: number): AvailabilitySlot[] {
+  console.warn(`[ServiceTitan] WARNING: Generating ${count} FAKE fallback slots - NOT from real availability`);
   const slots: AvailabilitySlot[] = [];
   const timeWindows = [
     { start: '09:00', end: '11:00', label: '9-11 AM' },
