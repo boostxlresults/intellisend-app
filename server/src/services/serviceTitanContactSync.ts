@@ -288,6 +288,77 @@ interface STCustomerImport {
   email?: string;
   doNotService?: boolean;
   doNotMail?: boolean;
+  customerId?: number;
+  tagTypeIds?: number[];
+}
+
+// Helper to get or create a tag by name for a tenant (with optional cache for bulk operations)
+async function getOrCreateTag(
+  tenantId: string, 
+  tagName: string, 
+  color?: string,
+  cache?: Map<string, string>
+): Promise<string> {
+  // Check cache first for performance during bulk imports
+  const cacheKey = `${tenantId}:${tagName}`;
+  if (cache?.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+  
+  let tag = await prisma.tag.findFirst({
+    where: { tenantId, name: tagName },
+  });
+  
+  if (!tag) {
+    tag = await prisma.tag.create({
+      data: {
+        tenantId,
+        name: tagName,
+        color: color || '#718096',
+      },
+    });
+  }
+  
+  // Store in cache
+  if (cache) {
+    cache.set(cacheKey, tag.id);
+  }
+  
+  return tag.id;
+}
+
+// Fetch ServiceTitan tag types mapping (ID -> name)
+async function fetchServiceTitanTagTypes(
+  config: { tenantApiBaseUrl: string; serviceTitanTenantId: string; appKey: string },
+  token: string
+): Promise<Map<number, string>> {
+  const tagTypesMap = new Map<number, string>();
+  
+  try {
+    const url = `${config.tenantApiBaseUrl}/settings/v2/tenant/${config.serviceTitanTenantId}/tag-types?pageSize=200`;
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'ST-App-Key': config.appKey,
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json() as { data?: Array<{ id: number; name: string }> };
+      if (data.data) {
+        for (const tag of data.data) {
+          tagTypesMap.set(tag.id, tag.name);
+        }
+        console.log(`[ServiceTitan Import] Fetched ${tagTypesMap.size} tag types`);
+      }
+    } else {
+      console.warn(`[ServiceTitan Import] Could not fetch tag types: ${response.status}`);
+    }
+  } catch (error) {
+    console.warn('[ServiceTitan Import] Error fetching tag types:', error);
+  }
+  
+  return tagTypesMap;
 }
 
 interface ImportResult {
@@ -354,6 +425,12 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     });
   }
 
+  // Fetch ServiceTitan tag types for syncing customer tags
+  const stTagTypes = await fetchServiceTitanTagTypes(
+    { tenantApiBaseUrl: config.tenantApiBaseUrl, serviceTitanTenantId: config.serviceTitanTenantId, appKey: config.appKey },
+    token
+  );
+
   const existingContacts = await prisma.contact.findMany({
     where: { tenantId },
     select: { phone: true },
@@ -365,6 +442,9 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   
   console.log(`[ServiceTitan Import] Found ${existingContacts.length} existing contacts in IntelliSend`);
   console.log(`[ServiceTitan Import] Unique normalized phones in existing set: ${existingPhones.size}`);
+
+  // Cache for tag lookups to improve performance during bulk import
+  const tagCache = new Map<string, string>();
 
   let totalFetched = 0;
   let imported = 0;
@@ -442,6 +522,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
           const nameParts = customer.name?.split(' ') || ['Unknown'];
           const firstName = nameParts[0] || 'Unknown';
           const lastName = nameParts.slice(1).join(' ') || '';
+          const customerZip = customer.address?.zip?.trim();
 
           const contact = await prisma.contact.create({
             data: {
@@ -453,11 +534,12 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
               address: customer.address?.street || null,
               city: customer.address?.city || null,
               state: customer.address?.state || null,
-              zip: customer.address?.zip || null,
+              zip: customerZip || null,
               leadSource: 'ServiceTitan Import',
             },
           });
 
+          // Add "In ServiceTitan" tag
           await prisma.contactTag.create({
             data: {
               contactId: contact.id,
@@ -465,8 +547,44 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             },
           });
 
-          existingPhones.add(normalizedPhone);
+          // Add ZIP code tag for geo-targeting (e.g., "ZIP-85658")
+          if (customerZip && customerZip.length >= 5) {
+            const zipCode = customerZip.substring(0, 5); // Get first 5 digits
+            if (/^\d{5}$/.test(zipCode)) {
+              const zipTagId = await getOrCreateTag(tenantId, `ZIP-${zipCode}`, '#48BB78', tagCache);
+              await prisma.contactTag.upsert({
+                where: {
+                  contactId_tagId: { contactId: contact.id, tagId: zipTagId },
+                },
+                create: { contactId: contact.id, tagId: zipTagId },
+                update: {},
+              });
+            }
+          }
+
+          // Sync ServiceTitan tags (e.g., "ST: VIP Customer", "ST: Commercial")
+          if (customer.tagTypeIds && customer.tagTypeIds.length > 0 && stTagTypes.size > 0) {
+            for (const tagTypeId of customer.tagTypeIds) {
+              const tagName = stTagTypes.get(tagTypeId);
+              if (tagName) {
+                const stSyncTagId = await getOrCreateTag(tenantId, `ST: ${tagName}`, '#9F7AEA', tagCache);
+                await prisma.contactTag.upsert({
+                  where: {
+                    contactId_tagId: { contactId: contact.id, tagId: stSyncTagId },
+                  },
+                  create: { contactId: contact.id, tagId: stSyncTagId },
+                  update: {},
+                });
+              }
+            }
+          }
+
           imported++;
+          
+          // Log progress every 1000 contacts
+          if (imported % 1000 === 0) {
+            console.log(`[ServiceTitan Import] Progress: ${imported} contacts imported...`);
+          }
 
         } catch (err: any) {
           if (!err.message?.includes('Unique constraint')) {
