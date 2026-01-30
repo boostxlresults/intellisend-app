@@ -471,23 +471,21 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   let skippedDoNotContact = 0;
   let skippedNoPhone = 0;
   let errors = 0;
-  let continueFromToken: string | null = null;
   let hasMore = true;
   let apiError = false;
-  let iteration = 0;
 
-  // Use export/location-contacts endpoint which includes phone data
+  // Try different endpoints in order of preference
+  const pageSize = 50;
+  let page = 1;
+  
   while (hasMore) {
-    iteration++;
     try {
-      // Build URL with continuation token for pagination
-      let contactsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/export/location-contacts`;
-      if (continueFromToken) {
-        contactsUrl += `?from=${encodeURIComponent(continueFromToken)}`;
-      }
-      console.log(`[ServiceTitan Import] Fetching location-contacts batch ${iteration}...`);
+      // Use transactional /locations endpoint with pagination
+      // Contacts are nested under each location
+      const locationsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations?page=${page}&pageSize=${pageSize}&active=true`;
+      console.log(`[ServiceTitan Import] Fetching locations page ${page}...`);
       
-      const response = await fetch(contactsUrl, { headers });
+      const response = await fetch(locationsUrl, { headers });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -497,64 +495,89 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       }
 
       const data = await response.json() as { 
-        data?: Array<{
-          id?: number;
-          locationId?: number;
-          customerId?: number;
-          active?: boolean;
-          name?: string;
-          type?: string;
-          value?: string;
-          memo?: string;
-          phoneSettings?: { phoneNumber?: string; doNotText?: boolean };
-          modifiedOn?: string;
-        }>;
+        data?: STLocationImport[];
         hasMore?: boolean;
-        continueFrom?: string;
+        page?: number;
+        totalCount?: number;
       };
 
-      const locationContacts = data.data || [];
-      totalFetched += locationContacts.length;
+      const locations = data.data || [];
+      totalFetched += locations.length;
       
-      console.log(`[ServiceTitan Import] Batch ${iteration}: ${locationContacts.length} location-contacts (hasMore: ${data.hasMore})`);
+      console.log(`[ServiceTitan Import] Page ${page}: ${locations.length} locations (hasMore: ${data.hasMore})`);
       
-      // Debug: Log raw object structure from first batch
-      if (iteration === 1 && locationContacts.length > 0) {
-        console.log(`[ServiceTitan Import] DEBUG - Raw first contact keys:`, Object.keys(locationContacts[0]));
-        console.log(`[ServiceTitan Import] DEBUG - Raw first contact:`, JSON.stringify(locationContacts[0], null, 2));
-        console.log(`[ServiceTitan Import] DEBUG - Sample contacts:`, 
-          locationContacts.slice(0, 5).map(c => ({
-            id: c.id,
-            type: c.type,
-            value: c.value,
-            phoneSettings: c.phoneSettings,
-          }))
-        );
+      // Debug: Log raw object structure from first page
+      if (page === 1 && locations.length > 0) {
+        console.log(`[ServiceTitan Import] DEBUG - Raw first location keys:`, Object.keys(locations[0]));
+        console.log(`[ServiceTitan Import] DEBUG - Raw first location:`, JSON.stringify(locations[0], null, 2));
+        // Also check if there's a contacts array
+        console.log(`[ServiceTitan Import] DEBUG - First location contacts:`, locations[0].contacts);
       }
 
-      for (const locationContact of locationContacts) {
+      // For each location, we need to fetch its contacts separately
+      for (const location of locations) {
         try {
-          // Extract phone from the contact record
+          // Skip locations marked as Do Not Service or Do Not Mail
+          if (location.doNotService || location.doNotMail) {
+            skippedDoNotContact++;
+            continue;
+          }
+
+          // Fetch contacts for this location
+          const locationContactsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations/${location.id}/contacts`;
+          const contactsResponse = await fetch(locationContactsUrl, { headers });
+          
+          if (!contactsResponse.ok) {
+            // If we can't fetch contacts, skip this location
+            if (page === 1 && location === locations[0]) {
+              console.log(`[ServiceTitan Import] DEBUG - Cannot fetch location contacts: ${contactsResponse.status}`);
+            }
+            skippedNoPhone++;
+            continue;
+          }
+
+          const contactsData = await contactsResponse.json() as {
+            data?: Array<{
+              id?: number;
+              active?: boolean;
+              type?: string;
+              value?: string;
+              memo?: string;
+              phoneSettings?: { phoneNumber?: string; doNotText?: boolean };
+            }>;
+          };
+
+          // Debug first location's contacts
+          if (page === 1 && location === locations[0]) {
+            console.log(`[ServiceTitan Import] DEBUG - Location contacts response:`, JSON.stringify(contactsData, null, 2));
+          }
+
+          const locationContacts = contactsData.data || [];
+          
+          // Extract phone from contacts
           let primaryPhone: string | undefined;
           let contactEmail: string | undefined;
           
-          // Check phoneSettings first
-          if (locationContact.phoneSettings?.phoneNumber) {
-            primaryPhone = locationContact.phoneSettings.phoneNumber;
-          } else if (locationContact.value) {
-            // Check type to determine if it's a phone or email
-            const contactType = (locationContact.type || '').toLowerCase();
-            if (contactType.includes('phone') || contactType.includes('mobile') || contactType.includes('cell') || contactType.includes('text')) {
-              primaryPhone = locationContact.value;
-            } else if (contactType.includes('email')) {
-              contactEmail = locationContact.value;
-            } else {
-              // Check if value looks like a phone number (10+ digits)
-              const digits = locationContact.value.replace(/\D/g, '');
-              if (digits.length >= 10) {
-                primaryPhone = locationContact.value;
-              } else if (locationContact.value.includes('@')) {
-                contactEmail = locationContact.value;
+          for (const contact of locationContacts) {
+            // Check phoneSettings first
+            if (contact.phoneSettings?.phoneNumber) {
+              primaryPhone = contact.phoneSettings.phoneNumber;
+              break;
+            } else if (contact.value) {
+              const contactType = (contact.type || '').toLowerCase();
+              if (contactType.includes('phone') || contactType.includes('mobile') || contactType.includes('cell')) {
+                primaryPhone = contact.value;
+                break;
+              } else if (contactType.includes('email') && !contactEmail) {
+                contactEmail = contact.value;
+              } else {
+                // Check if value looks like a phone number
+                const digits = contact.value.replace(/\D/g, '');
+                if (digits.length >= 10 && !primaryPhone) {
+                  primaryPhone = contact.value;
+                } else if (contact.value.includes('@') && !contactEmail) {
+                  contactEmail = contact.value;
+                }
               }
             }
           }
@@ -574,13 +597,13 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
           // Add to set immediately to prevent duplicates within this import batch
           existingPhones.add(normalizedPhone);
 
-          // Use contact name or generate from phone
-          const contactName = locationContact.name || `Customer ${primaryPhone.slice(-4)}`;
-          const nameParts = contactName.split(' ');
+          // Use location name
+          const nameParts = location.name?.split(' ') || ['Unknown'];
           const firstName = nameParts[0] || 'Unknown';
           const lastName = nameParts.slice(1).join(' ') || '';
+          const locationZip = location.address?.zip?.trim();
 
-          const contact = await prisma.contact.create({
+          const newContact = await prisma.contact.create({
             data: {
               tenantId,
               firstName,
@@ -594,24 +617,34 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
           // Add "In ServiceTitan" tag
           await prisma.contactTag.create({
             data: {
-              contactId: contact.id,
+              contactId: newContact.id,
               tagId: stTag!.id,
             },
           });
 
-          // Note: ZIP codes and ServiceTitan tags require fetching location/customer separately
-          // For now, we skip those during location-contacts import
+          // Add ZIP code tag for geo-targeting
+          if (locationZip && locationZip.length >= 5) {
+            const zipCode = locationZip.substring(0, 5);
+            if (/^\d{5}$/.test(zipCode)) {
+              const zipTagId = await getOrCreateTag(tenantId, `ZIP-${zipCode}`, '#48BB78', tagCache);
+              await prisma.contactTag.upsert({
+                where: { contactId_tagId: { contactId: newContact.id, tagId: zipTagId } },
+                create: { contactId: newContact.id, tagId: zipTagId },
+                update: {},
+              });
+            }
+          }
 
           imported++;
           
-          // Log progress every 1000 contacts
-          if (imported % 1000 === 0) {
+          // Log progress every 100 contacts (with nested API calls, this is slower)
+          if (imported % 100 === 0) {
             console.log(`[ServiceTitan Import] Progress: ${imported} contacts imported...`);
           }
 
         } catch (err: any) {
           if (!err.message?.includes('Unique constraint')) {
-            console.error(`[ServiceTitan Import] Error importing contact ${locationContact.id}:`, err);
+            console.error(`[ServiceTitan Import] Error importing location ${location.id}:`, err);
             errors++;
           } else {
             skippedDuplicates++;
@@ -619,18 +652,19 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
         }
       }
 
-      // Use continuation token for pagination
-      if (data.hasMore && data.continueFrom) {
+      // Use page-based pagination
+      if (data.hasMore) {
         hasMore = true;
-        continueFromToken = data.continueFrom;
+        page++;
       } else {
-        hasMore = false;
+        hasMore = locations.length === pageSize;
+        page++;
       }
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
     } catch (error) {
-      console.error(`[ServiceTitan Import] Error on batch ${iteration}:`, error);
+      console.error(`[ServiceTitan Import] Error on page ${page}:`, error);
       apiError = true;
       break;
     }
