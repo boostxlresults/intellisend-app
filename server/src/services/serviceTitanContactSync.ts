@@ -483,14 +483,17 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       
       console.log(`[ServiceTitan Import] Page ${page}: ${customers.length} customers (hasMore: ${data.hasMore})`);
       
-      // Debug: Log sample phone data from first page
+      // Debug: Log raw customer object structure from first page
       if (page === 1 && customers.length > 0) {
-        console.log(`[ServiceTitan Import] DEBUG - Sample customer data:`, 
-          customers.slice(0, 3).map(c => ({
+        console.log(`[ServiceTitan Import] DEBUG - Raw first customer keys:`, Object.keys(customers[0]));
+        console.log(`[ServiceTitan Import] DEBUG - Raw first customer:`, JSON.stringify(customers[0], null, 2));
+        console.log(`[ServiceTitan Import] DEBUG - Sample phone data:`, 
+          customers.slice(0, 5).map(c => ({
             name: c.name,
             phoneNumber: c.phoneNumber,
             phoneSettings: c.phoneSettings,
-            resolvedPhone: c.phoneNumber || c.phoneSettings?.[0]?.phoneNumber || 'NONE'
+            hasPhoneNumberField: 'phoneNumber' in c,
+            hasPhoneSettingsField: 'phoneSettings' in c,
           }))
         );
       }
