@@ -283,6 +283,7 @@ interface STCustomerImport {
     state?: string;
     zip?: string;
   };
+  phoneNumber?: string;
   phoneSettings?: Array<{ phoneNumber: string; type: string }>;
   email?: string;
   doNotService?: boolean;
@@ -404,11 +405,12 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       
       // Debug: Log sample phone data from first page
       if (page === 1 && customers.length > 0) {
-        console.log(`[ServiceTitan Import] DEBUG - Sample customer phoneSettings:`, 
+        console.log(`[ServiceTitan Import] DEBUG - Sample customer data:`, 
           customers.slice(0, 3).map(c => ({
             name: c.name,
+            phoneNumber: c.phoneNumber,
             phoneSettings: c.phoneSettings,
-            hasPhone: !!c.phoneSettings?.[0]?.phoneNumber
+            resolvedPhone: c.phoneNumber || c.phoneSettings?.[0]?.phoneNumber || 'NONE'
           }))
         );
       }
@@ -421,7 +423,8 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             continue;
           }
 
-          const primaryPhone = customer.phoneSettings?.[0]?.phoneNumber;
+          // ServiceTitan returns phone in different fields - check both
+          const primaryPhone = customer.phoneNumber || customer.phoneSettings?.[0]?.phoneNumber;
           if (!primaryPhone) {
             skippedNoPhone++;
             continue;
