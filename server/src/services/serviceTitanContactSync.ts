@@ -283,21 +283,32 @@ interface STCustomerImport {
     state?: string;
     zip?: string;
   };
-  // ServiceTitan stores phone numbers in a contacts array
-  contacts?: Array<{
-    id?: number;
-    type?: string | { name?: string; value?: string };
-    value?: string;
-    memo?: string;
-  }>;
-  // Legacy fields (may or may not be present)
-  phoneNumber?: string;
-  phoneSettings?: Array<{ phoneNumber: string; type: string }>;
-  email?: string;
   doNotService?: boolean;
   doNotMail?: boolean;
-  customerId?: number;
   tagTypeIds?: number[];
+}
+
+// ServiceTitan Location interface - locations have contacts with phone numbers
+interface STLocationImport {
+  id: number;
+  customerId: number;
+  name: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  };
+  contacts?: Array<{
+    id?: number;
+    type?: string;
+    value?: string;
+    memo?: string;
+    phoneNumber?: string; // Some versions use this
+  }>;
+  doNotService?: boolean;
+  doNotMail?: boolean;
+  taxExempt?: boolean;
 }
 
 // Helper to get or create a tag by name for a tenant (with optional cache for bulk operations)
@@ -467,10 +478,11 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
 
   while (hasMore) {
     try {
-      const customersUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers?page=${page}&pageSize=${pageSize}&active=true`;
-      console.log(`[ServiceTitan Import] Fetching page ${page}...`);
+      // Use LOCATIONS endpoint instead of customers - locations have contacts with phone numbers
+      const locationsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations?page=${page}&pageSize=${pageSize}&active=true`;
+      console.log(`[ServiceTitan Import] Fetching locations page ${page}...`);
       
-      const response = await fetch(customersUrl, { headers });
+      const response = await fetch(locationsUrl, { headers });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -480,68 +492,65 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       }
 
       const data = await response.json() as { 
-        data?: STCustomerImport[];
+        data?: STLocationImport[];
         hasMore?: boolean;
         page?: number;
         totalCount?: number;
       };
 
-      const customers = data.data || [];
-      totalFetched += customers.length;
+      const locations = data.data || [];
+      totalFetched += locations.length;
       
-      console.log(`[ServiceTitan Import] Page ${page}: ${customers.length} customers (hasMore: ${data.hasMore})`);
+      console.log(`[ServiceTitan Import] Page ${page}: ${locations.length} locations (hasMore: ${data.hasMore})`);
       
-      // Debug: Log raw customer object structure from first page
-      if (page === 1 && customers.length > 0) {
-        console.log(`[ServiceTitan Import] DEBUG - Raw first customer keys:`, Object.keys(customers[0]));
-        console.log(`[ServiceTitan Import] DEBUG - Raw first customer:`, JSON.stringify(customers[0], null, 2));
-        console.log(`[ServiceTitan Import] DEBUG - Sample contact arrays:`, 
-          customers.slice(0, 3).map(c => ({
-            name: c.name,
-            contacts: c.contacts,
-            phoneNumber: c.phoneNumber,
+      // Debug: Log raw location object structure from first page
+      if (page === 1 && locations.length > 0) {
+        console.log(`[ServiceTitan Import] DEBUG - Raw first location keys:`, Object.keys(locations[0]));
+        console.log(`[ServiceTitan Import] DEBUG - Raw first location:`, JSON.stringify(locations[0], null, 2));
+        console.log(`[ServiceTitan Import] DEBUG - Sample contacts:`, 
+          locations.slice(0, 3).map(l => ({
+            name: l.name,
+            contacts: l.contacts,
           }))
         );
       }
 
-      for (const customer of customers) {
+      for (const location of locations) {
         try {
-          // Skip customers marked as Do Not Service or Do Not Mail
-          if (customer.doNotService || customer.doNotMail) {
+          // Skip locations marked as Do Not Service or Do Not Mail
+          if (location.doNotService || location.doNotMail) {
             skippedDoNotContact++;
             continue;
           }
 
-          // ServiceTitan stores phone in contacts array - extract phone type contacts
+          // Extract phone from location's contacts array
           let primaryPhone: string | undefined;
+          let contactEmail: string | undefined;
           
-          // First check the contacts array (correct ServiceTitan structure)
-          if (customer.contacts && customer.contacts.length > 0) {
-            for (const contact of customer.contacts) {
-              // Check if this is a phone contact (type can be string or object)
-              const contactType = typeof contact.type === 'string' 
-                ? contact.type.toLowerCase() 
-                : (contact.type?.name || contact.type?.value || '').toLowerCase();
-              
-              if (contactType.includes('phone') || contactType.includes('mobile') || contactType.includes('cell')) {
-                if (contact.value) {
+          if (location.contacts && location.contacts.length > 0) {
+            for (const contact of location.contacts) {
+              // Check for phone number in various fields
+              if (contact.phoneNumber) {
+                primaryPhone = contact.phoneNumber;
+              } else if (contact.value) {
+                // Check if type indicates phone
+                const contactType = (contact.type || '').toLowerCase();
+                if (contactType.includes('phone') || contactType.includes('mobile') || contactType.includes('cell')) {
                   primaryPhone = contact.value;
-                  break;
+                } else if (contactType.includes('email')) {
+                  contactEmail = contact.value;
+                } else {
+                  // Check if value looks like a phone number (10+ digits)
+                  const digits = contact.value.replace(/\D/g, '');
+                  if (digits.length >= 10 && !primaryPhone) {
+                    primaryPhone = contact.value;
+                  } else if (contact.value.includes('@') && !contactEmail) {
+                    contactEmail = contact.value;
+                  }
                 }
               }
+              if (primaryPhone) break;
             }
-            // If no phone type found, check if first contact has a phone-like value (10+ digits)
-            if (!primaryPhone && customer.contacts[0]?.value) {
-              const val = customer.contacts[0].value.replace(/\D/g, '');
-              if (val.length >= 10) {
-                primaryPhone = customer.contacts[0].value;
-              }
-            }
-          }
-          
-          // Fallback to legacy fields
-          if (!primaryPhone) {
-            primaryPhone = customer.phoneNumber || customer.phoneSettings?.[0]?.phoneNumber;
           }
           
           if (!primaryPhone) {
@@ -558,10 +567,10 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
           // Add to set immediately to prevent duplicates within this import batch
           existingPhones.add(normalizedPhone);
 
-          const nameParts = customer.name?.split(' ') || ['Unknown'];
+          const nameParts = location.name?.split(' ') || ['Unknown'];
           const firstName = nameParts[0] || 'Unknown';
           const lastName = nameParts.slice(1).join(' ') || '';
-          const customerZip = customer.address?.zip?.trim();
+          const locationZip = location.address?.zip?.trim();
 
           const contact = await prisma.contact.create({
             data: {
@@ -569,11 +578,11 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
               firstName,
               lastName: lastName || '',
               phone: formatPhoneForDisplay(primaryPhone),
-              email: customer.email || null,
-              address: customer.address?.street || null,
-              city: customer.address?.city || null,
-              state: customer.address?.state || null,
-              zip: customerZip || null,
+              email: contactEmail || null,
+              address: location.address?.street || null,
+              city: location.address?.city || null,
+              state: location.address?.state || null,
+              zip: locationZip || null,
               leadSource: 'ServiceTitan Import',
             },
           });
@@ -587,8 +596,8 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
           });
 
           // Add ZIP code tag for geo-targeting (e.g., "ZIP-85658")
-          if (customerZip && customerZip.length >= 5) {
-            const zipCode = customerZip.substring(0, 5); // Get first 5 digits
+          if (locationZip && locationZip.length >= 5) {
+            const zipCode = locationZip.substring(0, 5); // Get first 5 digits
             if (/^\d{5}$/.test(zipCode)) {
               const zipTagId = await getOrCreateTag(tenantId, `ZIP-${zipCode}`, '#48BB78', tagCache);
               await prisma.contactTag.upsert({
@@ -601,22 +610,9 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             }
           }
 
-          // Sync ServiceTitan tags (e.g., "ST: VIP Customer", "ST: Commercial")
-          if (customer.tagTypeIds && customer.tagTypeIds.length > 0 && stTagTypes.size > 0) {
-            for (const tagTypeId of customer.tagTypeIds) {
-              const tagName = stTagTypes.get(tagTypeId);
-              if (tagName) {
-                const stSyncTagId = await getOrCreateTag(tenantId, `ST: ${tagName}`, '#9F7AEA', tagCache);
-                await prisma.contactTag.upsert({
-                  where: {
-                    contactId_tagId: { contactId: contact.id, tagId: stSyncTagId },
-                  },
-                  create: { contactId: contact.id, tagId: stSyncTagId },
-                  update: {},
-                });
-              }
-            }
-          }
+          // Note: ServiceTitan tags are on customers, not locations
+          // To sync tags, we would need to fetch the customer separately
+          // For now, we skip tag sync during location-based import
 
           imported++;
           
@@ -627,7 +623,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
 
         } catch (err: any) {
           if (!err.message?.includes('Unique constraint')) {
-            console.error(`[ServiceTitan Import] Error importing customer ${customer.id}:`, err);
+            console.error(`[ServiceTitan Import] Error importing location ${location.id}:`, err);
             errors++;
           } else {
             skippedDuplicates++;
@@ -639,7 +635,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       if (data.hasMore !== undefined) {
         hasMore = data.hasMore;
       } else {
-        hasMore = customers.length === pageSize;
+        hasMore = locations.length === pageSize;
       }
       page++;
 
