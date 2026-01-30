@@ -283,6 +283,14 @@ interface STCustomerImport {
     state?: string;
     zip?: string;
   };
+  // ServiceTitan stores phone numbers in a contacts array
+  contacts?: Array<{
+    id?: number;
+    type?: string | { name?: string; value?: string };
+    value?: string;
+    memo?: string;
+  }>;
+  // Legacy fields (may or may not be present)
   phoneNumber?: string;
   phoneSettings?: Array<{ phoneNumber: string; type: string }>;
   email?: string;
@@ -487,13 +495,11 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       if (page === 1 && customers.length > 0) {
         console.log(`[ServiceTitan Import] DEBUG - Raw first customer keys:`, Object.keys(customers[0]));
         console.log(`[ServiceTitan Import] DEBUG - Raw first customer:`, JSON.stringify(customers[0], null, 2));
-        console.log(`[ServiceTitan Import] DEBUG - Sample phone data:`, 
-          customers.slice(0, 5).map(c => ({
+        console.log(`[ServiceTitan Import] DEBUG - Sample contact arrays:`, 
+          customers.slice(0, 3).map(c => ({
             name: c.name,
+            contacts: c.contacts,
             phoneNumber: c.phoneNumber,
-            phoneSettings: c.phoneSettings,
-            hasPhoneNumberField: 'phoneNumber' in c,
-            hasPhoneSettingsField: 'phoneSettings' in c,
           }))
         );
       }
@@ -506,8 +512,38 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             continue;
           }
 
-          // ServiceTitan returns phone in different fields - check both
-          const primaryPhone = customer.phoneNumber || customer.phoneSettings?.[0]?.phoneNumber;
+          // ServiceTitan stores phone in contacts array - extract phone type contacts
+          let primaryPhone: string | undefined;
+          
+          // First check the contacts array (correct ServiceTitan structure)
+          if (customer.contacts && customer.contacts.length > 0) {
+            for (const contact of customer.contacts) {
+              // Check if this is a phone contact (type can be string or object)
+              const contactType = typeof contact.type === 'string' 
+                ? contact.type.toLowerCase() 
+                : (contact.type?.name || contact.type?.value || '').toLowerCase();
+              
+              if (contactType.includes('phone') || contactType.includes('mobile') || contactType.includes('cell')) {
+                if (contact.value) {
+                  primaryPhone = contact.value;
+                  break;
+                }
+              }
+            }
+            // If no phone type found, check if first contact has a phone-like value (10+ digits)
+            if (!primaryPhone && customer.contacts[0]?.value) {
+              const val = customer.contacts[0].value.replace(/\D/g, '');
+              if (val.length >= 10) {
+                primaryPhone = customer.contacts[0].value;
+              }
+            }
+          }
+          
+          // Fallback to legacy fields
+          if (!primaryPhone) {
+            primaryPhone = customer.phoneNumber || customer.phoneSettings?.[0]?.phoneNumber;
+          }
+          
           if (!primaryPhone) {
             skippedNoPhone++;
             continue;
