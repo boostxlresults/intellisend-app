@@ -724,6 +724,7 @@ export const api = {
       imported: number;
       skippedDuplicates: number;
       skippedDoNotContact: number;
+      skippedNoPhone: number;
       errors: number;
     }>(`${API_BASE}/tenants/${tenantId}/servicetitan/import-contacts`, {
       method: 'POST',

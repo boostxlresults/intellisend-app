@@ -439,8 +439,9 @@ export default function Settings() {
           `New Contacts Imported: ${result.imported}\n` +
           `Skipped (Already Exist): ${result.skippedDuplicates}\n` +
           (result.skippedDoNotContact > 0 ? `Skipped (Do Not Service/Mail): ${result.skippedDoNotContact}\n` : '') +
+          (result.skippedNoPhone > 0 ? `Skipped (No Phone): ${result.skippedNoPhone}\n` : '') +
           (result.errors > 0 ? `Errors: ${result.errors}` : '') +
-          `\n\nAll imported contacts have been tagged with "In ServiceTitan".`
+          (result.imported > 0 ? `\n\nAll imported contacts have been tagged with "In ServiceTitan".` : '')
         );
         fetchData();
       } else {

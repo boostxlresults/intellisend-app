@@ -295,6 +295,7 @@ interface ImportResult {
   imported: number;
   skippedDuplicates: number;
   skippedDoNotContact: number;
+  skippedNoPhone: number;
   errors: number;
 }
 
@@ -313,6 +314,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       imported: 0,
       skippedDuplicates: 0,
       skippedDoNotContact: 0,
+      skippedNoPhone: 0,
       errors: 0,
     };
   }
@@ -326,6 +328,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       imported: 0,
       skippedDuplicates: 0,
       skippedDoNotContact: 0,
+      skippedNoPhone: 0,
       errors: 0,
     };
   }
@@ -350,17 +353,23 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     });
   }
 
+  const existingContacts = await prisma.contact.findMany({
+    where: { tenantId },
+    select: { phone: true },
+  });
+  
   const existingPhones = new Set(
-    (await prisma.contact.findMany({
-      where: { tenantId },
-      select: { phone: true },
-    })).map(c => normalizePhoneForComparison(c.phone))
+    existingContacts.map(c => normalizePhoneForComparison(c.phone))
   );
+  
+  console.log(`[ServiceTitan Import] Found ${existingContacts.length} existing contacts in IntelliSend`);
+  console.log(`[ServiceTitan Import] Unique normalized phones in existing set: ${existingPhones.size}`);
 
   let totalFetched = 0;
   let imported = 0;
   let skippedDuplicates = 0;
   let skippedDoNotContact = 0;
+  let skippedNoPhone = 0;
   let errors = 0;
   let page = 1;
   const pageSize = 50;
@@ -392,6 +401,17 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       totalFetched += customers.length;
       
       console.log(`[ServiceTitan Import] Page ${page}: ${customers.length} customers (hasMore: ${data.hasMore})`);
+      
+      // Debug: Log sample phone data from first page
+      if (page === 1 && customers.length > 0) {
+        console.log(`[ServiceTitan Import] DEBUG - Sample customer phoneSettings:`, 
+          customers.slice(0, 3).map(c => ({
+            name: c.name,
+            phoneSettings: c.phoneSettings,
+            hasPhone: !!c.phoneSettings?.[0]?.phoneNumber
+          }))
+        );
+      }
 
       for (const customer of customers) {
         try {
@@ -403,6 +423,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
 
           const primaryPhone = customer.phoneSettings?.[0]?.phoneNumber;
           if (!primaryPhone) {
+            skippedNoPhone++;
             continue;
           }
 
@@ -411,6 +432,9 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             skippedDuplicates++;
             continue;
           }
+          
+          // Add to set immediately to prevent duplicates within this import batch
+          existingPhones.add(normalizedPhone);
 
           const nameParts = customer.name?.split(' ') || ['Unknown'];
           const firstName = nameParts[0] || 'Unknown';
@@ -468,7 +492,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     }
   }
 
-  console.log(`[ServiceTitan Import] Completed: ${totalFetched} fetched, ${imported} imported, ${skippedDuplicates} duplicates, ${skippedDoNotContact} do-not-contact, ${errors} errors`);
+  console.log(`[ServiceTitan Import] Completed: ${totalFetched} fetched, ${imported} imported, ${skippedDuplicates} duplicates, ${skippedDoNotContact} do-not-contact, ${skippedNoPhone} no-phone, ${errors} errors`);
 
   return {
     success: !apiError,
@@ -476,6 +500,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     imported,
     skippedDuplicates,
     skippedDoNotContact,
+    skippedNoPhone,
     errors,
   };
 }
