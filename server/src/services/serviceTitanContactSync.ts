@@ -411,7 +411,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   }
 
   // Token management - refresh before expiration (tokens last 15 min, refresh at 12 min)
-  const TOKEN_REFRESH_INTERVAL_MS = 12 * 60 * 1000; // 12 minutes
+  const TOKEN_REFRESH_INTERVAL_MS = 8 * 60 * 1000; // 8 minutes (well before 15-minute expiration)
   let currentToken = await getServiceTitanToken(config);
   let tokenObtainedAt = Date.now();
   
@@ -508,7 +508,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   while (hasMore) {
     try {
       // Get fresh headers (will refresh token if needed)
-      const currentHeaders = await getHeaders();
+      let currentHeaders = await getHeaders();
       if (!currentHeaders) {
         console.error(`[ServiceTitan Import] Failed to get valid token`);
         apiError = true;
@@ -523,6 +523,13 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
       const response = await fetch(locationsUrl, { headers: currentHeaders });
       
       if (!response.ok) {
+        // If 401, force token refresh and retry the same page
+        if (response.status === 401) {
+          console.log(`[ServiceTitan Import] Got 401, forcing token refresh and retrying page ${page}...`);
+          tokenObtainedAt = 0; // Force refresh on next getHeaders() call
+          continue; // Retry this page with fresh token
+        }
+        
         const errorText = await response.text();
         console.error(`[ServiceTitan Import] API error: ${response.status} - ${errorText}`);
         apiError = true;
@@ -560,7 +567,18 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
 
           // Fetch contacts for this location (use same headers which were refreshed at page start)
           const locationContactsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations/${location.id}/contacts`;
-          const contactsResponse = await fetch(locationContactsUrl, { headers: currentHeaders });
+          let contactsResponse = await fetch(locationContactsUrl, { headers: currentHeaders });
+          
+          // Retry on 401 with fresh token
+          if (contactsResponse.status === 401) {
+            console.log(`[ServiceTitan Import] Got 401 on contacts fetch, refreshing token...`);
+            tokenObtainedAt = 0;
+            const freshHeaders = await getHeaders();
+            if (freshHeaders) {
+              currentHeaders = freshHeaders;
+              contactsResponse = await fetch(locationContactsUrl, { headers: currentHeaders });
+            }
+          }
           
           if (!contactsResponse.ok) {
             // If we can't fetch contacts, skip this location
