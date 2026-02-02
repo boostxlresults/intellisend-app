@@ -135,6 +135,8 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   padding: 20px;
   margin-bottom: 20px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .table {
@@ -231,7 +233,7 @@ body {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -265,6 +267,8 @@ body {
   border-bottom: 1px solid #e2e8f0;
   cursor: pointer;
   transition: background 0.2s;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .conversation-item:hover {
