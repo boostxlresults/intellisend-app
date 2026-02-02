@@ -642,7 +642,42 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
           }
 
           const normalizedPhone = normalizePhoneForComparison(primaryPhone);
+          
+          // Check if contact already exists
           if (existingPhones.has(normalizedPhone)) {
+            // Find existing contact and ADD tags (don't overwrite name/email/existing tags)
+            const existingContact = await prisma.contact.findFirst({
+              where: {
+                tenantId,
+                phone: {
+                  contains: normalizedPhone.slice(-10), // Match by last 10 digits
+                },
+              },
+            });
+            
+            if (existingContact) {
+              // Add "In ServiceTitan" tag if not already present
+              await prisma.contactTag.upsert({
+                where: { contactId_tagId: { contactId: existingContact.id, tagId: stTag!.id } },
+                create: { contactId: existingContact.id, tagId: stTag!.id },
+                update: {},
+              });
+              
+              // Add ZIP code tag for geo-targeting
+              const locationZip = location.address?.zip?.trim();
+              if (locationZip && locationZip.length >= 5) {
+                const zipCode = locationZip.substring(0, 5);
+                if (/^\d{5}$/.test(zipCode)) {
+                  const zipTagId = await getOrCreateTag(tenantId, `ZIP-${zipCode}`, '#48BB78', tagCache);
+                  await prisma.contactTag.upsert({
+                    where: { contactId_tagId: { contactId: existingContact.id, tagId: zipTagId } },
+                    create: { contactId: existingContact.id, tagId: zipTagId },
+                    update: {},
+                  });
+                }
+              }
+            }
+            
             skippedDuplicates++;
             continue;
           }
