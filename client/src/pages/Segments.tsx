@@ -78,15 +78,24 @@ export default function Segments() {
     tag.name.toLowerCase().includes(tagSearch.toLowerCase())
   );
 
+  const [tagMatchingContacts, setTagMatchingContacts] = useState<Array<{ id: string; firstName: string; lastName: string; phone: string; tags?: Array<{ id: string; name: string; color: string }> }>>([]);
+  const [loadingTagContacts, setLoadingTagContacts] = useState(false);
+
   const getFilteredContacts = () => {
-    let result = contacts;
-    
+    // When in tag mode with selected tags, use server-fetched contacts
     if (selectionMode === 'tags' && selectedTags.size > 0) {
-      result = contacts.filter(contact => 
-        contact.tags?.some(t => selectedTags.has(t.name))
-      );
+      let result = tagMatchingContacts;
+      if (contactSearch) {
+        result = result.filter(contact =>
+          `${contact.firstName} ${contact.lastName}`.toLowerCase().includes(contactSearch.toLowerCase()) ||
+          contact.phone.includes(contactSearch)
+        );
+      }
+      return result;
     }
     
+    // Manual mode uses paginated contacts
+    let result = contacts;
     if (contactSearch) {
       result = result.filter(contact =>
         `${contact.firstName} ${contact.lastName}`.toLowerCase().includes(contactSearch.toLowerCase()) ||
@@ -97,7 +106,7 @@ export default function Segments() {
     return result;
   };
 
-  const handleTagToggle = (tagName: string) => {
+  const handleTagToggle = async (tagName: string) => {
     const newTags = new Set(selectedTags);
     if (newTags.has(tagName)) {
       newTags.delete(tagName);
@@ -107,11 +116,20 @@ export default function Segments() {
     setSelectedTags(newTags);
     setSelectAllMode(false);
     
-    if (selectionMode === 'tags') {
-      const matchingContacts = contacts.filter(c => 
-        c.tags?.some(t => newTags.has(t.name))
-      );
-      setSelectedContacts(new Set(matchingContacts.map(c => c.id)));
+    if (selectionMode === 'tags' && selectedTenant && newTags.size > 0) {
+      setLoadingTagContacts(true);
+      try {
+        const result = await api.getContactsByTags(selectedTenant.id, Array.from(newTags));
+        setTagMatchingContacts(result.contacts);
+        setSelectedContacts(new Set(result.contacts.map(c => c.id)));
+      } catch (error) {
+        console.error('Failed to fetch contacts by tags:', error);
+      } finally {
+        setLoadingTagContacts(false);
+      }
+    } else {
+      setTagMatchingContacts([]);
+      setSelectedContacts(new Set());
     }
   };
 
@@ -328,7 +346,11 @@ export default function Segments() {
               />
               
               <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
-                {filteredContacts.length === 0 ? (
+                {loadingTagContacts ? (
+                  <p style={{ padding: '20px', textAlign: 'center', color: '#718096' }}>
+                    Loading contacts...
+                  </p>
+                ) : filteredContacts.length === 0 ? (
                   <p style={{ padding: '20px', textAlign: 'center', color: '#718096' }}>
                     {selectionMode === 'tags' && selectedTags.size > 0 
                       ? 'No contacts match the selected tags'

@@ -295,6 +295,15 @@ export const api = {
     );
   },
   
+  getContactsByTags: (tenantId: string, tagNames: string[]) =>
+    request<{ contacts: Array<{ id: string; firstName: string; lastName: string; phone: string; tags: Array<{ id: string; name: string; color: string }> }>; total: number }>(
+      `${API_BASE}/tenants/${tenantId}/contacts/by-tags`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ tagNames }),
+      }
+    ),
+  
   createContact: (tenantId: string, data: Partial<Contact>) =>
     request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts`, {
       method: 'POST',

@@ -78,6 +78,51 @@ router.get('/:tenantId/contacts', async (req, res) => {
   }
 });
 
+// Get contacts by tags (for segment creation - returns IDs and count only)
+router.post('/:tenantId/contacts/by-tags', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { tagNames } = req.body as { tagNames: string[] };
+    
+    if (!tagNames || tagNames.length === 0) {
+      return res.json({ contacts: [], total: 0 });
+    }
+    
+    const contacts = await prisma.contact.findMany({
+      where: {
+        tenantId,
+        tags: {
+          some: {
+            tag: { name: { in: tagNames } },
+          },
+        },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        tags: {
+          include: { tag: true },
+        },
+      },
+    });
+    
+    const formattedContacts = contacts.map(c => ({
+      id: c.id,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      phone: c.phone,
+      tags: c.tags.map(ct => ({ id: ct.tagId, name: ct.tag.name, color: ct.tag.color })),
+    }));
+    
+    res.json({ contacts: formattedContacts, total: contacts.length });
+  } catch (error: any) {
+    console.error('Error fetching contacts by tags:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/:tenantId/contacts', async (req, res) => {
   try {
     const { tenantId } = req.params;
