@@ -410,8 +410,12 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     };
   }
 
-  const token = await getServiceTitanToken(config);
-  if (!token) {
+  // Token management - refresh before expiration (tokens last 15 min, refresh at 12 min)
+  const TOKEN_REFRESH_INTERVAL_MS = 12 * 60 * 1000; // 12 minutes
+  let currentToken = await getServiceTitanToken(config);
+  let tokenObtainedAt = Date.now();
+  
+  if (!currentToken) {
     console.error(`[ServiceTitan Import] Failed to get auth token`);
     return {
       success: false,
@@ -424,10 +428,33 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
     };
   }
 
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'ST-App-Key': config.appKey,
-    'Content-Type': 'application/json',
+  // Helper function to get current valid token, refreshing if needed
+  const getValidToken = async (): Promise<string | null> => {
+    const tokenAge = Date.now() - tokenObtainedAt;
+    if (tokenAge > TOKEN_REFRESH_INTERVAL_MS) {
+      console.log(`[ServiceTitan Import] Token age ${Math.round(tokenAge / 1000)}s, refreshing...`);
+      const newToken = await getServiceTitanToken(config);
+      if (newToken) {
+        currentToken = newToken;
+        tokenObtainedAt = Date.now();
+        console.log(`[ServiceTitan Import] Token refreshed successfully`);
+      } else {
+        console.error(`[ServiceTitan Import] Failed to refresh token`);
+        return null;
+      }
+    }
+    return currentToken;
+  };
+
+  // Helper to get current headers with valid token
+  const getHeaders = async () => {
+    const token = await getValidToken();
+    if (!token) return null;
+    return {
+      'Authorization': `Bearer ${token}`,
+      'ST-App-Key': config.appKey,
+      'Content-Type': 'application/json',
+    };
   };
 
   let stTag = await prisma.tag.findUnique({
@@ -447,7 +474,7 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   // Fetch ServiceTitan tag types for syncing customer tags
   const stTagTypes = await fetchServiceTitanTagTypes(
     { tenantApiBaseUrl: config.tenantApiBaseUrl, serviceTitanTenantId: config.serviceTitanTenantId, appKey: config.appKey },
-    token
+    currentToken
   );
 
   const existingContacts = await prisma.contact.findMany({
@@ -480,12 +507,20 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
   
   while (hasMore) {
     try {
+      // Get fresh headers (will refresh token if needed)
+      const currentHeaders = await getHeaders();
+      if (!currentHeaders) {
+        console.error(`[ServiceTitan Import] Failed to get valid token`);
+        apiError = true;
+        break;
+      }
+
       // Use transactional /locations endpoint with pagination
       // Contacts are nested under each location
       const locationsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations?page=${page}&pageSize=${pageSize}&active=true`;
       console.log(`[ServiceTitan Import] Fetching locations page ${page}...`);
       
-      const response = await fetch(locationsUrl, { headers });
+      const response = await fetch(locationsUrl, { headers: currentHeaders });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -523,9 +558,9 @@ export async function importServiceTitanContacts(tenantId: string): Promise<Impo
             continue;
           }
 
-          // Fetch contacts for this location
+          // Fetch contacts for this location (use same headers which were refreshed at page start)
           const locationContactsUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/locations/${location.id}/contacts`;
-          const contactsResponse = await fetch(locationContactsUrl, { headers });
+          const contactsResponse = await fetch(locationContactsUrl, { headers: currentHeaders });
           
           if (!contactsResponse.ok) {
             // If we can't fetch contacts, skip this location
