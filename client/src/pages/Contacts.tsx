@@ -110,7 +110,7 @@ export default function Contacts() {
         <div style={{ marginBottom: '16px' }}>
           <input
             type="text"
-            placeholder="Search contacts..."
+            placeholder="Search by name, phone, email, or tag..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', width: '300px' }}

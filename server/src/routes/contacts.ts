@@ -31,11 +31,14 @@ router.get('/:tenantId/contacts', async (req, res) => {
     }
     
     if (search) {
+      const searchTerm = search as string;
       where.OR = [
-        { firstName: { contains: search as string, mode: 'insensitive' } },
-        { lastName: { contains: search as string, mode: 'insensitive' } },
-        { phone: { contains: search as string } },
-        { email: { contains: search as string, mode: 'insensitive' } },
+        { firstName: { contains: searchTerm, mode: 'insensitive' } },
+        { lastName: { contains: searchTerm, mode: 'insensitive' } },
+        { phone: { contains: searchTerm } },
+        { email: { contains: searchTerm, mode: 'insensitive' } },
+        // Search by tag name
+        { tags: { some: { tag: { name: { contains: searchTerm, mode: 'insensitive' } } } } },
       ];
     }
     
