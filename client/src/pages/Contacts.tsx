@@ -16,6 +16,10 @@ export default function Contacts() {
   const [globalTags, setGlobalTags] = useState('');
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [duplicates, setDuplicates] = useState<{ phone: string; count: number; contact_ids: string[]; names: string[] }[]>([]);
+  const [loadingDuplicates, setLoadingDuplicates] = useState(false);
+  const [merging, setMerging] = useState<string | null>(null);
 
   const fetchContacts = async () => {
     if (!selectedTenant) return;
@@ -92,12 +96,51 @@ export default function Contacts() {
     }
   };
 
+  const fetchDuplicates = async () => {
+    if (!selectedTenant) return;
+    setLoadingDuplicates(true);
+    try {
+      const data = await api.getDuplicateContacts(selectedTenant.id);
+      setDuplicates(data);
+    } catch (error) {
+      console.error('Failed to fetch duplicates:', error);
+    } finally {
+      setLoadingDuplicates(false);
+    }
+  };
+
+  const handleFindDuplicates = async () => {
+    await fetchDuplicates();
+    setShowDuplicatesModal(true);
+  };
+
+  const handleMerge = async (phone: string, contactIds: string[]) => {
+    if (!selectedTenant || contactIds.length < 2) return;
+    const keepId = contactIds[0];
+    const mergeIds = contactIds.slice(1);
+    setMerging(phone);
+    try {
+      await api.mergeContacts(selectedTenant.id, keepId, mergeIds);
+      alert(`Merged ${mergeIds.length} duplicate contacts`);
+      fetchDuplicates();
+      fetchContacts();
+    } catch (error) {
+      console.error('Failed to merge:', error);
+      alert('Failed to merge contacts');
+    } finally {
+      setMerging(null);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <h2>Contacts</h2>
-        <div>
-          <button className="btn btn-secondary" onClick={() => setShowImportModal(true)} style={{ marginRight: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn btn-secondary" onClick={handleFindDuplicates}>
+            Find Duplicates
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
             Import
           </button>
           <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
@@ -267,6 +310,47 @@ export default function Contacts() {
                 <button type="submit" className="btn btn-primary">Add</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDuplicatesModal && (
+        <div className="modal-overlay" onClick={() => setShowDuplicatesModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h3>Duplicate Contacts</h3>
+            {loadingDuplicates ? (
+              <p>Scanning for duplicates...</p>
+            ) : duplicates.length === 0 ? (
+              <p style={{ color: '#48bb78', padding: '20px', textAlign: 'center' }}>No duplicate contacts found!</p>
+            ) : (
+              <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                <p style={{ color: '#718096', marginBottom: '16px' }}>
+                  Found {duplicates.length} phone numbers with duplicate contacts
+                </p>
+                {duplicates.map(dup => (
+                  <div key={dup.phone} style={{ padding: '12px', background: '#f7fafc', borderRadius: '6px', marginBottom: '10px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong>{dup.phone}</strong>
+                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#718096' }}>
+                          {dup.count} contacts: {dup.names.join(', ')}
+                        </p>
+                      </div>
+                      <button
+                        className="btn btn-small btn-primary"
+                        onClick={() => handleMerge(dup.phone, dup.contact_ids)}
+                        disabled={merging === dup.phone}
+                      >
+                        {merging === dup.phone ? 'Merging...' : 'Merge'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: '16px', textAlign: 'right' }}>
+              <button className="btn btn-secondary" onClick={() => setShowDuplicatesModal(false)}>Close</button>
+            </div>
           </div>
         </div>
       )}
