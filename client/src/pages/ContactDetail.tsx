@@ -25,6 +25,9 @@ export default function ContactDetail() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ firstName: '', lastName: '', phone: '', email: '' });
   const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState<{ id: string; content: string; createdBy?: string; createdAt: string }[]>([]);
+  const [newNote, setNewNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -51,9 +54,46 @@ export default function ContactDetail() {
     }
   };
 
+  const fetchNotes = async () => {
+    if (!selectedTenant || !contactId) return;
+    try {
+      const data = await api.getContactNotes(selectedTenant.id, contactId);
+      setNotes(data);
+    } catch (error) {
+      console.error('Failed to fetch notes:', error);
+    }
+  };
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTenant || !contactId || !newNote.trim()) return;
+    setAddingNote(true);
+    try {
+      await api.addContactNote(selectedTenant.id, contactId, newNote.trim());
+      setNewNote('');
+      fetchNotes();
+    } catch (error) {
+      console.error('Failed to add note:', error);
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!selectedTenant || !contactId) return;
+    if (!window.confirm('Delete this note?')) return;
+    try {
+      await api.deleteContactNote(selectedTenant.id, contactId, noteId);
+      fetchNotes();
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+    }
+  };
+
   useEffect(() => {
     fetchContact();
     fetchTags();
+    fetchNotes();
   }, [selectedTenant, contactId]);
 
   useEffect(() => {
@@ -383,6 +423,47 @@ export default function ContactDetail() {
             </div>
           )}
         </div>
+      </div>
+      
+      <div className="card">
+        <h3 style={{ marginBottom: '16px' }}>Notes</h3>
+        <form onSubmit={handleAddNote} style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <input
+              type="text"
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              placeholder="Add a note about this contact..."
+              style={{ flex: 1, padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px' }}
+            />
+            <button type="submit" className="btn btn-primary btn-small" disabled={addingNote || !newNote.trim()}>
+              {addingNote ? 'Adding...' : 'Add'}
+            </button>
+          </div>
+        </form>
+        {notes.length === 0 ? (
+          <p style={{ color: '#718096', fontSize: '14px' }}>No notes yet</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {notes.map(note => (
+              <div key={note.id} style={{ padding: '12px', background: '#f7fafc', borderRadius: '6px', borderLeft: '3px solid #4299e1' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{note.content}</p>
+                  <button
+                    onClick={() => handleDeleteNote(note.id)}
+                    style={{ background: 'none', border: 'none', color: '#a0aec0', cursor: 'pointer', padding: '4px', fontSize: '16px' }}
+                    title="Delete note"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#718096' }}>
+                  {new Date(note.createdAt).toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       
       <div className="card">
