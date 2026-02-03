@@ -159,8 +159,24 @@ model Contact {
   segmentMembers  SegmentMember[]
   conversations   Conversation[]
   messages        Message[]
+  notes           ContactNote[]
 
   @@index([phone])
+  @@index([tenantId])
+}
+
+model ContactNote {
+  id        String   @id @default(uuid())
+  tenantId  String
+  contactId String
+  content   String
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
   @@index([tenantId])
 }
 
