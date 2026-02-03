@@ -432,6 +432,31 @@ export const api = {
       body: JSON.stringify(data),
     }),
   
+  // Contact Notes
+  getContactNotes: (tenantId: string, contactId: string) =>
+    request<{ id: string; content: string; createdBy?: string; createdAt: string }[]>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/notes`),
+  
+  addContactNote: (tenantId: string, contactId: string, content: string, createdBy?: string) =>
+    request<{ id: string; content: string; createdBy?: string; createdAt: string }>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ content, createdBy }),
+    }),
+  
+  deleteContactNote: (tenantId: string, contactId: string, noteId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}/notes/${noteId}`, {
+      method: 'DELETE',
+    }),
+  
+  // Duplicate detection and merging
+  getDuplicateContacts: (tenantId: string) =>
+    request<{ phone: string; count: number; contact_ids: string[]; names: string[] }[]>(`${API_BASE}/tenants/${tenantId}/contacts/duplicates`),
+  
+  mergeContacts: (tenantId: string, keepContactId: string, mergeContactIds: string[]) =>
+    request<{ success: boolean; mergedCount: number; tagsAdded: number }>(`${API_BASE}/tenants/${tenantId}/contacts/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ keepContactId, mergeContactIds }),
+    }),
+  
   getSuppressions: (tenantId: string) =>
     request<Suppression[]>(`${API_BASE}/tenants/${tenantId}/suppressions`),
   

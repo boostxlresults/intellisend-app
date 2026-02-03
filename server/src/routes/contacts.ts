@@ -492,4 +492,163 @@ router.delete('/:tenantId/contacts/bulk/by-tag/:tagId', async (req, res) => {
   }
 });
 
+// Contact Notes
+router.get('/:tenantId/contacts/:contactId/notes', async (req, res) => {
+  try {
+    const { tenantId, contactId } = req.params;
+    
+    const notes = await prisma.contactNote.findMany({
+      where: { tenantId, contactId },
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    res.json(notes);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/contacts/:contactId/notes', async (req, res) => {
+  try {
+    const { tenantId, contactId } = req.params;
+    const { content, createdBy } = req.body;
+    
+    if (!content?.trim()) {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+    
+    const note = await prisma.contactNote.create({
+      data: {
+        tenantId,
+        contactId,
+        content: content.trim(),
+        createdBy,
+      },
+    });
+    
+    res.json(note);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/:tenantId/contacts/:contactId/notes/:noteId', async (req, res) => {
+  try {
+    const { tenantId, contactId, noteId } = req.params;
+    
+    await prisma.contactNote.deleteMany({
+      where: { id: noteId, tenantId, contactId },
+    });
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Find duplicate contacts (same phone number)
+router.get('/:tenantId/contacts/duplicates', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const duplicates = await prisma.$queryRaw`
+      SELECT phone, COUNT(*)::int as count, 
+             array_agg(id) as contact_ids,
+             array_agg("firstName" || ' ' || "lastName") as names
+      FROM "Contact"
+      WHERE "tenantId" = ${tenantId}
+      GROUP BY phone
+      HAVING COUNT(*) > 1
+      ORDER BY COUNT(*) DESC
+      LIMIT 100
+    ` as any[];
+    
+    res.json(duplicates);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Merge duplicate contacts
+router.post('/:tenantId/contacts/merge', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { keepContactId, mergeContactIds } = req.body;
+    
+    if (!keepContactId || !mergeContactIds?.length) {
+      return res.status(400).json({ error: 'keepContactId and mergeContactIds are required' });
+    }
+    
+    const keepContact = await prisma.contact.findFirst({
+      where: { id: keepContactId, tenantId },
+      include: { tags: true },
+    });
+    
+    if (!keepContact) {
+      return res.status(404).json({ error: 'Primary contact not found' });
+    }
+    
+    const contactsToMerge = await prisma.contact.findMany({
+      where: { id: { in: mergeContactIds }, tenantId },
+      include: { tags: true },
+    });
+    
+    // Collect all unique tag IDs from contacts being merged
+    const existingTagIds = new Set(keepContact.tags.map(t => t.tagId));
+    const newTagIds: string[] = [];
+    
+    for (const contact of contactsToMerge) {
+      for (const ct of contact.tags) {
+        if (!existingTagIds.has(ct.tagId)) {
+          existingTagIds.add(ct.tagId);
+          newTagIds.push(ct.tagId);
+        }
+      }
+    }
+    
+    // Add missing tags to the keep contact
+    if (newTagIds.length > 0) {
+      await prisma.contactTag.createMany({
+        data: newTagIds.map(tagId => ({
+          contactId: keepContactId,
+          tagId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    
+    // Move notes to the keep contact
+    await prisma.contactNote.updateMany({
+      where: { contactId: { in: mergeContactIds } },
+      data: { contactId: keepContactId },
+    });
+    
+    // Move conversations to the keep contact
+    await prisma.conversation.updateMany({
+      where: { contactId: { in: mergeContactIds }, tenantId },
+      data: { contactId: keepContactId },
+    });
+    
+    // Move messages to the keep contact
+    await prisma.message.updateMany({
+      where: { contactId: { in: mergeContactIds }, tenantId },
+      data: { contactId: keepContactId },
+    });
+    
+    // Delete the merged contacts
+    await prisma.contact.deleteMany({
+      where: { id: { in: mergeContactIds }, tenantId },
+    });
+    
+    res.json({ 
+      success: true, 
+      mergedCount: contactsToMerge.length,
+      tagsAdded: newTagIds.length,
+    });
+  } catch (error: any) {
+    console.error('Error merging contacts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
