@@ -126,6 +126,32 @@ async function processScheduledCampaigns() {
         excludedContactIds = new Set(contactsWithExcludedTags.map(ct => ct.contactId));
       }
       
+      // Track phones already processed in this batch to prevent duplicate sends
+      const processedPhones = new Set<string>();
+      
+      // Also check for phone numbers already sent in this campaign (across all contacts)
+      const existingPhoneDeliveries = await prisma.message.findMany({
+        where: {
+          tenantId: campaign.tenantId,
+          campaignId: campaign.id,
+          campaignStepId: firstStep.id,
+        },
+        select: { toNumber: true },
+      });
+      existingPhoneDeliveries.forEach(m => processedPhones.add(m.toNumber));
+      
+      // Check phones already queued for this campaign
+      const queuedPhones = await prisma.outboundMessageQueue.findMany({
+        where: {
+          tenantId: campaign.tenantId,
+          campaignId: campaign.id,
+          campaignStepId: firstStep.id,
+          status: { in: ['PENDING', 'PROCESSING'] },
+        },
+        select: { phone: true },
+      });
+      queuedPhones.forEach(q => processedPhones.add(q.phone));
+      
       for (const member of campaign.segment.members) {
         const contact = member.contact;
         
@@ -135,31 +161,8 @@ async function processScheduledCampaigns() {
             continue;
           }
           
-          const existingDelivery = await prisma.message.findFirst({
-            where: {
-              tenantId: campaign.tenantId,
-              contactId: contact.id,
-              campaignId: campaign.id,
-              campaignStepId: firstStep.id,
-            },
-          });
-          
-          if (existingDelivery) {
-            skippedCount++;
-            continue;
-          }
-          
-          const alreadyQueued = await prisma.outboundMessageQueue.findFirst({
-            where: {
-              tenantId: campaign.tenantId,
-              contactId: contact.id,
-              campaignId: campaign.id,
-              campaignStepId: firstStep.id,
-              status: { in: ['PENDING', 'PROCESSING'] },
-            },
-          });
-          
-          if (alreadyQueued) {
+          // Skip if phone number already processed (prevents duplicate sends to same phone via different contact records)
+          if (processedPhones.has(contact.phone)) {
             skippedCount++;
             continue;
           }
@@ -196,6 +199,9 @@ async function processScheduledCampaigns() {
             body: messageBody,
             fromNumber: sendContext.fromNumber,
           });
+          
+          // Mark phone as processed to prevent duplicates from other contact records
+          processedPhones.add(contact.phone);
         } catch (error: any) {
           console.error(`Error preparing ${contact.phone}:`, error.message);
         }
