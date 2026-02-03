@@ -46,6 +46,8 @@ The platform is built on a modern tech stack featuring Node.js with TypeScript a
 - **MMS Support**: Capabilities to send and receive media attachments.
 - **Email Notifications**: Integration with Resend for email alerts, especially for customer replies.
 - **SMS Opt-In Capture**: Y/YES reply detection automatically tags contacts as "Opted In" with consent timestamp.
+- **Contact Notes**: Internal note-taking system for contacts to track important information and follow-ups.
+- **Duplicate Contact Detection & Merging**: Identifies contacts with the same phone number and allows merging them into a single record, consolidating tags, notes, conversations, and messages.
 
 ## External Dependencies
 - **Twilio**: Core SMS messaging platform, used for sending/receiving SMS and managing messaging services.
