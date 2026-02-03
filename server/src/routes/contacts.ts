@@ -269,6 +269,15 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
       
       try {
         const allTags = [...(c.tags || []), ...globalTags];
+        
+        // Auto-add ZIP code as a tag for geo-targeting
+        if (c.zip) {
+          const zipTag = c.zip.toString().trim().substring(0, 5); // Get 5-digit ZIP
+          if (zipTag && /^\d{5}$/.test(zipTag)) {
+            allTags.push(zipTag);
+          }
+        }
+        
         const uniqueTags = [...new Set(allTags)].filter(Boolean);
         
         const existing = await prisma.contact.findFirst({

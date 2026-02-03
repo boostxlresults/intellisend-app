@@ -209,7 +209,7 @@ export default function Contacts() {
                     <strong>Optional:</strong> firstName, lastName (or just "Name" - will auto-split), email, address, city, state, zip, tags
                   </p>
                   <p style={{ fontSize: '12px', color: '#718096', marginTop: '8px' }}>
-                    The "tags" column can contain comma-separated tags for each contact.
+                    The "tags" column can contain comma-separated tags. ZIP codes are automatically added as tags for geo-targeting.
                   </p>
                 </div>
               </>
