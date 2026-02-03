@@ -426,7 +426,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   
-  updateContact: (tenantId: string, contactId: string, data: { aiAgentEnabled?: boolean; firstName?: string; lastName?: string; email?: string; address?: string; city?: string; state?: string; zip?: string; customerType?: string }) =>
+  updateContact: (tenantId: string, contactId: string, data: { aiAgentEnabled?: boolean; firstName?: string; lastName?: string; phone?: string; email?: string; address?: string; city?: string; state?: string; zip?: string; customerType?: string }) =>
     request<Contact>(`${API_BASE}/tenants/${tenantId}/contacts/${contactId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

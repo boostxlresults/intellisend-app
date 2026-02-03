@@ -372,7 +372,7 @@ router.get('/:tenantId/contacts/:contactId', async (req, res) => {
 router.patch('/:tenantId/contacts/:contactId', async (req, res) => {
   try {
     const { tenantId, contactId } = req.params;
-    const { aiAgentEnabled, firstName, lastName, email, address, city, state, zip, customerType } = req.body;
+    const { aiAgentEnabled, firstName, lastName, phone, email, address, city, state, zip, customerType } = req.body;
     
     const contact = await prisma.contact.findFirst({
       where: { id: contactId, tenantId },
@@ -386,6 +386,7 @@ router.patch('/:tenantId/contacts/:contactId', async (req, res) => {
     if (aiAgentEnabled !== undefined) updateData.aiAgentEnabled = aiAgentEnabled;
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
+    if (phone !== undefined) updateData.phone = phone;
     if (email !== undefined) updateData.email = email;
     if (address !== undefined) updateData.address = address;
     if (city !== undefined) updateData.city = city;

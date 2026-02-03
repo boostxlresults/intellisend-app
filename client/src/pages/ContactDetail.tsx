@@ -22,6 +22,9 @@ export default function ContactDetail() {
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [togglingAI, setTogglingAI] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', phone: '', email: '' });
+  const [saving, setSaving] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -173,6 +176,38 @@ export default function ContactDetail() {
     }
   };
 
+  const openEditModal = () => {
+    if (!contact) return;
+    setEditForm({
+      firstName: contact.firstName || '',
+      lastName: contact.lastName || '',
+      phone: contact.phone || '',
+      email: contact.email || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTenant || !contactId) return;
+    setSaving(true);
+    try {
+      const updated = await api.updateContact(selectedTenant.id, contactId, {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        phone: editForm.phone,
+        email: editForm.email || undefined,
+      });
+      setContact({ ...contact!, ...updated });
+      setShowEditModal(false);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to update contact: ' + message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return <p>Loading contact...</p>;
   }
@@ -191,6 +226,9 @@ export default function ContactDetail() {
           <h2 style={{ marginTop: '8px' }}>{contact.firstName} {contact.lastName}</h2>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn btn-secondary" onClick={openEditModal}>
+            Edit Contact
+          </button>
           <button className="btn btn-primary" onClick={() => setShowMessageModal(true)}>
             Send Message
           </button>
@@ -394,6 +432,62 @@ export default function ContactDetail() {
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={sending || !messageText.trim()}>
                   {sending ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Edit Contact</h3>
+            <form onSubmit={handleSaveEdit}>
+              <div className="form-group">
+                <label>First Name</label>
+                <input
+                  type="text"
+                  value={editForm.firstName}
+                  onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Last Name</label>
+                <input
+                  type="text"
+                  value={editForm.lastName}
+                  onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div className="form-group">
+                <label>Phone</label>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={saving || !editForm.firstName.trim() || !editForm.phone.trim()}>
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
