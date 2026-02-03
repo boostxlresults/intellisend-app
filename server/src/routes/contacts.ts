@@ -213,17 +213,38 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
         }
       }
       
-      contactsData = parseResult.data.map((row: any) => ({
-        phone: row.phone || row.phonenumber || '',
-        firstName: row.firstname || row.first || 'Unknown',
-        lastName: row.lastname || row.last || 'Contact',
-        email: row.email || undefined,
-        address: row.address || undefined,
-        city: row.city || undefined,
-        state: row.state || undefined,
-        zip: row.zip || row.zipcode || undefined,
-        tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
-      }));
+      contactsData = parseResult.data.map((row: any) => {
+        let firstName = row.firstname || row.first || '';
+        let lastName = row.lastname || row.last || '';
+        
+        // Auto-split "Name" column into firstName/lastName if no separate name columns exist
+        if (!firstName && !lastName && row.name) {
+          const nameParts = row.name.trim().split(/\s+/);
+          if (nameParts.length === 1) {
+            firstName = nameParts[0];
+            lastName = '';
+          } else if (nameParts.length === 2) {
+            firstName = nameParts[0];
+            lastName = nameParts[1];
+          } else {
+            // For 3+ parts, first word is firstName, rest is lastName
+            firstName = nameParts[0];
+            lastName = nameParts.slice(1).join(' ');
+          }
+        }
+        
+        return {
+          phone: row.phone || row.phonenumber || '',
+          firstName: firstName || 'Unknown',
+          lastName: lastName || 'Contact',
+          email: row.email || undefined,
+          address: row.address || undefined,
+          city: row.city || undefined,
+          state: row.state || undefined,
+          zip: row.zip || row.zipcode || undefined,
+          tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+        };
+      });
     } else if (req.body.contacts) {
       contactsData = Array.isArray(req.body.contacts) 
         ? req.body.contacts 

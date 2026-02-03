@@ -206,7 +206,7 @@ export default function Contacts() {
                   <p style={{ fontWeight: '600', marginBottom: '8px' }}>Expected CSV Columns:</p>
                   <p style={{ fontSize: '12px', color: '#718096' }}>
                     <strong>Required:</strong> phone<br />
-                    <strong>Optional:</strong> firstName, lastName, email, address, city, state, zip, tags
+                    <strong>Optional:</strong> firstName, lastName (or just "Name" - will auto-split), email, address, city, state, zip, tags
                   </p>
                   <p style={{ fontSize: '12px', color: '#718096', marginTop: '8px' }}>
                     The "tags" column can contain comma-separated tags for each contact.
