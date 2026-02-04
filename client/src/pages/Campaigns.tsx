@@ -331,16 +331,47 @@ export default function Campaigns() {
               </p>
             </div>
             <div className="form-group">
-              <label>Image URL (Optional - for MMS)</label>
+              <label>Image (Optional - for MMS)</label>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      alert('Image must be under 5MB');
+                      return;
+                    }
+                    try {
+                      const res = await fetch('/api/uploads/request-url', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+                      });
+                      const { uploadURL, objectPath } = await res.json();
+                      await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+                      setImageUrl(`${window.location.origin}${objectPath}`);
+                    } catch (err) {
+                      alert('Upload failed');
+                    }
+                  }}
+                />
+                {imageUrl && <button type="button" className="btn btn-small btn-secondary" onClick={() => setImageUrl('')}>Clear</button>}
+              </div>
+              <p style={{ fontSize: '12px', color: '#718096' }}>Or paste URL:</p>
               <input
                 type="url"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://example.com/image.jpg"
+                style={{ marginTop: '4px' }}
               />
-              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                Add a publicly accessible image URL to send as MMS. Supported: JPG, PNG, GIF (max 5MB)
-              </p>
+              {imageUrl && (
+                <div style={{ marginTop: '8px' }}>
+                  <img src={imageUrl} alt="Preview" style={{ maxWidth: '150px', maxHeight: '100px', borderRadius: '4px' }} />
+                </div>
+              )}
             </div>
             <div className="form-group">
               <div className="checkbox-group">

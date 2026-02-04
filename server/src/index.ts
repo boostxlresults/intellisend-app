@@ -28,6 +28,7 @@ import billingRoutes from './routes/billing';
 import serviceTitanRoutes from './routes/serviceTitan';
 import aiAgentRoutes from './routes/aiAgent';
 import { requireAuth } from './middleware/auth';
+import { registerObjectStorageRoutes } from '../replit_integrations/object_storage';
 import { startCampaignScheduler } from './services/campaignScheduler';
 import { startQueueDispatcher } from './services/queueDispatcher';
 import { startSequenceProcessor } from './services/sequenceProcessor';
@@ -103,6 +104,8 @@ app.use('/api', templateRoutes);
 app.use('/', linkRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
+
+registerObjectStorageRoutes(app);
 
 app.use(express.static(path.join(__dirname, '../public')));
 
