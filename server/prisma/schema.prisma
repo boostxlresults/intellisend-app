@@ -302,6 +302,7 @@ model CampaignStep {
   delayMinutes Int      @default(0)
   bodyTemplate String
   useAiAssist  Boolean  @default(false)
+  mediaUrl     String?
   createdAt    DateTime @default(now())
 
   campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)

@@ -49,6 +49,7 @@ router.post('/:tenantId/campaigns', async (req, res) => {
             delayMinutes: step.delayMinutes || 0,
             bodyTemplate: step.bodyTemplate,
             useAiAssist: step.useAiAssist || false,
+            mediaUrl: step.mediaUrl || undefined,
           })),
         } : undefined,
       },
