@@ -32,6 +32,8 @@ export default function Settings() {
   const [showAddNumber, setShowAddNumber] = useState(false);
   const [showAddSuppression, setShowAddSuppression] = useState(false);
   const [showAddPersona, setShowAddPersona] = useState(false);
+  const [showEditPersona, setShowEditPersona] = useState(false);
+  const [editingPersona, setEditingPersona] = useState<AiPersona | null>(null);
   const [showAddTenant, setShowAddTenant] = useState(false);
   const [showTwilioSetup, setShowTwilioSetup] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -232,6 +234,38 @@ export default function Settings() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert('Failed to add persona: ' + message);
+    }
+  };
+
+  const handleEditPersona = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedTenant || !editingPersona) return;
+    const formData = new FormData(e.currentTarget);
+    try {
+      await api.updateAiPersona(selectedTenant.id, editingPersona.id, {
+        name: formData.get('name') as string,
+        description: formData.get('description') as string || undefined,
+        systemPrompt: formData.get('systemPrompt') as string,
+        canAutoReply: formData.get('canAutoReply') === 'on',
+      });
+      setShowEditPersona(false);
+      setEditingPersona(null);
+      fetchData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to update persona: ' + message);
+    }
+  };
+
+  const handleDeletePersona = async (personaId: string, personaName: string) => {
+    if (!selectedTenant) return;
+    if (!window.confirm(`Are you sure you want to delete the "${personaName}" persona?`)) return;
+    try {
+      await api.deleteAiPersona(selectedTenant.id, personaId);
+      fetchData();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to delete persona: ' + message);
     }
   };
 
@@ -770,6 +804,7 @@ export default function Settings() {
                     <th>Name</th>
                     <th>Description</th>
                     <th>Auto-Reply</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -778,6 +813,25 @@ export default function Settings() {
                       <td>{persona.name}</td>
                       <td>{persona.description || '-'}</td>
                       <td>{persona.canAutoReply ? 'Yes' : 'No'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className="btn btn-secondary btn-small"
+                            onClick={() => {
+                              setEditingPersona(persona);
+                              setShowEditPersona(true);
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-danger btn-small"
+                            onClick={() => handleDeletePersona(persona.id, persona.name)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1398,6 +1452,45 @@ export default function Settings() {
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddPersona(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Add</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEditPersona && editingPersona && (
+        <div className="modal-overlay" onClick={() => { setShowEditPersona(false); setEditingPersona(null); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h3>Edit AI Persona</h3>
+            <form onSubmit={handleEditPersona}>
+              <div className="form-group">
+                <label>Name *</label>
+                <input type="text" name="name" required defaultValue={editingPersona.name} />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <input type="text" name="description" placeholder="Brief description of this persona" defaultValue={editingPersona.description || ''} />
+              </div>
+              <div className="form-group">
+                <label>System Prompt *</label>
+                <textarea 
+                  name="systemPrompt" 
+                  required 
+                  placeholder="You are a helpful assistant for..."
+                  style={{ minHeight: '150px' }}
+                  defaultValue={editingPersona.systemPrompt}
+                />
+                <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+                  This is the core instruction that shapes how the AI responds.
+                </small>
+              </div>
+              <div className="form-group checkbox-group">
+                <input type="checkbox" name="canAutoReply" id="editCanAutoReply" defaultChecked={editingPersona.canAutoReply} />
+                <label htmlFor="editCanAutoReply">Enable auto-reply</label>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => { setShowEditPersona(false); setEditingPersona(null); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save</button>
               </div>
             </form>
           </div>

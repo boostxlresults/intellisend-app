@@ -475,6 +475,17 @@ export const api = {
       body: JSON.stringify(data),
     }),
   
+  updateAiPersona: (tenantId: string, personaId: string, data: Partial<AiPersona>) =>
+    request<AiPersona>(`${API_BASE}/tenants/${tenantId}/ai-personas/${personaId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  deleteAiPersona: (tenantId: string, personaId: string) =>
+    request<{ success: boolean }>(`${API_BASE}/tenants/${tenantId}/ai-personas/${personaId}`, {
+      method: 'DELETE',
+    }),
+  
   getKBArticles: (tenantId: string) =>
     request<KBArticle[]>(`${API_BASE}/tenants/${tenantId}/kb-articles`),
   

@@ -94,4 +94,27 @@ router.put('/:tenantId/ai-personas/:personaId', async (req, res) => {
   }
 });
 
+router.delete('/:tenantId/ai-personas/:personaId', async (req, res) => {
+  try {
+    const { tenantId, personaId } = req.params;
+    
+    const persona = await prisma.aiPersona.findFirst({
+      where: { id: personaId, tenantId },
+    });
+    
+    if (!persona) {
+      return res.status(404).json({ error: 'AI persona not found' });
+    }
+    
+    await prisma.aiPersona.delete({
+      where: { id: personaId },
+    });
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting AI persona:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
