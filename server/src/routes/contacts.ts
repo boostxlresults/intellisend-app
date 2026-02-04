@@ -31,15 +31,30 @@ router.get('/:tenantId/contacts', async (req, res) => {
     }
     
     if (search) {
-      const searchTerm = search as string;
-      where.OR = [
-        { firstName: { contains: searchTerm, mode: 'insensitive' } },
-        { lastName: { contains: searchTerm, mode: 'insensitive' } },
-        { phone: { contains: searchTerm } },
-        { email: { contains: searchTerm, mode: 'insensitive' } },
-        // Search by tag name
-        { tags: { some: { tag: { name: { contains: searchTerm, mode: 'insensitive' } } } } },
-      ];
+      const searchTerm = (search as string).trim();
+      const searchWords = searchTerm.split(/\s+/).filter(w => w.length > 0);
+      
+      if (searchWords.length > 1) {
+        // Multi-word search: ALL words must match somewhere (firstName, lastName, phone, email, or tag)
+        where.AND = searchWords.map(word => ({
+          OR: [
+            { firstName: { contains: word, mode: 'insensitive' } },
+            { lastName: { contains: word, mode: 'insensitive' } },
+            { phone: { contains: word } },
+            { email: { contains: word, mode: 'insensitive' } },
+            { tags: { some: { tag: { name: { contains: word, mode: 'insensitive' } } } } },
+          ],
+        }));
+      } else {
+        // Single word search: match any field
+        where.OR = [
+          { firstName: { contains: searchTerm, mode: 'insensitive' } },
+          { lastName: { contains: searchTerm, mode: 'insensitive' } },
+          { phone: { contains: searchTerm } },
+          { email: { contains: searchTerm, mode: 'insensitive' } },
+          { tags: { some: { tag: { name: { contains: searchTerm, mode: 'insensitive' } } } } },
+        ];
+      }
     }
     
     const [contacts, total] = await Promise.all([
