@@ -8,9 +8,9 @@ interface RateLimitConfig {
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitConfig = {
-  maxMessagesPerDay: 3,
-  maxMessagesPerWeek: 10,
-  maxMessagesPerMonth: 25,
+  maxMessagesPerDay: 10,
+  maxMessagesPerWeek: 30,
+  maxMessagesPerMonth: 75,
   minSecondsBetweenMessages: 30,
 };
 
