@@ -223,6 +223,16 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
       data: { lastContactedAt: new Date() },
     });
     
+    if (!smsResult.success) {
+      console.error(`SMS send failed to ${conversation.contact.phone}: ${smsResult.error}`);
+      return res.status(422).json({
+        error: smsResult.error || 'Failed to send SMS',
+        message,
+        smsResult,
+        smsFailed: true,
+      });
+    }
+    
     res.status(201).json({
       message,
       smsResult,

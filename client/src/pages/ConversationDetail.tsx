@@ -67,8 +67,12 @@ export default function ConversationDetail() {
       setSuggestions([]);
       fetchConversation();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert('Failed to send message: ' + message);
+      let errorMessage = 'Unknown error';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = (error as { message: string }).message;
+      }
+      alert('Failed to send message: ' + errorMessage);
+      fetchConversation();
     } finally {
       setSending(false);
     }
