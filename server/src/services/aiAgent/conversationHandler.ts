@@ -252,18 +252,33 @@ export async function handleInboundMessage(
         tenant,
         contact,
         session,
-        `Customer asked a question: "${classification.extractedData.question || messageBody}". CRITICAL: Your answer MUST be relevant to what the conversation is about. The last message you sent was: "${lastBusinessMessage.substring(0, 100)}". Answer their question specifically in that context, then gently ask if they'd like to schedule.`,
+        `Customer asked a question: "${classification.extractedData.question || messageBody}". Be helpful and informative. The conversation context is: "${lastBusinessMessage.substring(0, 100)}". Answer their question thoroughly and conversationally. Do NOT push for scheduling - just be helpful. If they want to book, they'll ask.`,
         conversationHistory
       );
-      await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
+      await updateSessionState(session.id, 'CONVERSING', 'PENDING');
       return {
         shouldRespond: true,
         responseText: infoResponse,
-        newState: 'QUALIFYING',
+        newState: 'CONVERSING',
+      };
+
+    case 'INTERESTED':
+      // Customer is interested but just wants to chat - be informative, not pushy
+      const interestedResponse = await generateResponse(
+        tenant,
+        contact,
+        session,
+        `Customer showed interest and wants to learn more. Be friendly, helpful, and conversational. Share useful information about the topic they're interested in. Do NOT push for scheduling or try to book an appointment - just have a natural, informative conversation. Answer any implied questions. If they want to schedule, they will ask directly.`,
+        conversationHistory
+      );
+      await updateSessionState(session.id, 'CONVERSING', 'PENDING');
+      return {
+        shouldRespond: true,
+        responseText: interestedResponse,
+        newState: 'CONVERSING',
       };
 
     case 'BOOK_YES':
-    case 'INTERESTED':
       return await handleBookingIntent(
         session,
         config,
@@ -300,14 +315,14 @@ export async function handleInboundMessage(
         tenant,
         contact,
         session,
-        'Customer response was unclear. Ask a simple yes/no question about whether they want to schedule an appointment.',
+        'Customer response was unclear. Ask a friendly, open-ended question to understand what they need help with. Be conversational and helpful, not salesy.',
         conversationHistory
       );
-      await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
+      await updateSessionState(session.id, 'CONVERSING', 'PENDING');
       return {
         shouldRespond: true,
         responseText: clarifyResponse,
-        newState: 'QUALIFYING',
+        newState: 'CONVERSING',
       };
   }
   } catch (error) {
