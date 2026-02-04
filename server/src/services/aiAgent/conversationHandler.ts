@@ -247,11 +247,12 @@ export async function handleInboundMessage(
       };
 
     case 'INFO_REQUEST':
+      const lastBusinessMessage = conversationHistory.filter(m => m.role === 'business').pop()?.body || '';
       const infoResponse = await generateResponse(
         tenant,
         contact,
         session,
-        `Customer asked a question: "${classification.extractedData.question || messageBody}". Answer helpfully and briefly, then gently ask if they'd like to schedule.`,
+        `Customer asked a question: "${classification.extractedData.question || messageBody}". CRITICAL: Your answer MUST be relevant to what the conversation is about. The last message you sent was: "${lastBusinessMessage.substring(0, 100)}". Answer their question specifically in that context, then gently ask if they'd like to schedule.`,
         conversationHistory
       );
       await updateSessionState(session.id, 'QUALIFYING', 'PENDING');
@@ -1230,8 +1231,9 @@ RULES:
 5. End with a clear, simple next step or question
 6. Use the knowledge base for accurate company info
 7. Match the customer's energy - if they're excited, be excited back
-8. ALWAYS reference the conversation context - if replying to "who is this?", mention what the previous message was about
-9. Be specific about what you're helping with based on the conversation history`;
+8. CRITICAL: Read the MOST RECENT messages carefully - your response MUST be about the same topic as the last outbound message
+9. Be specific about what you're helping with based on the conversation history
+10. If the last outbound message was about air quality, respond about air quality. If it was about heating, respond about heating. NEVER give unrelated advice.`;
 
     let existingCustomerContext = '';
     if (stCustomerContext?.isExistingCustomer) {
