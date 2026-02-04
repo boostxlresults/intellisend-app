@@ -13,6 +13,7 @@ export default function ConversationDetail() {
   const [suggestions, setSuggestions] = useState<{ text: string }[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [togglingAI, setTogglingAI] = useState(false);
+  const [resettingSession, setResettingSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchConversation = async () => {
@@ -106,6 +107,24 @@ export default function ConversationDetail() {
     }
   };
 
+  const handleResetAISession = async () => {
+    if (!selectedTenant || !conversationId) return;
+    if (!window.confirm('Reset the AI session for this conversation? This will allow the AI to engage fresh.')) return;
+    setResettingSession(true);
+    try {
+      await api.resetAISession(selectedTenant.id, conversationId);
+      alert('AI session reset successfully. The AI will now engage fresh with this contact.');
+    } catch (error: unknown) {
+      let errorMessage = 'Unknown error';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = (error as { message: string }).message;
+      }
+      alert('Failed to reset AI session: ' + errorMessage);
+    } finally {
+      setResettingSession(false);
+    }
+  };
+
   if (loading) {
     return <p>Loading conversation...</p>;
   }
@@ -141,6 +160,23 @@ export default function ConversationDetail() {
               AI Agent {conversation.aiAgentEnabled !== false ? 'ON' : 'OFF'}
             </span>
           </label>
+          <button
+            type="button"
+            onClick={handleResetAISession}
+            disabled={resettingSession}
+            style={{
+              padding: '6px 12px',
+              fontSize: '12px',
+              backgroundColor: '#805ad5',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: resettingSession ? 'not-allowed' : 'pointer',
+              opacity: resettingSession ? 0.6 : 1,
+            }}
+          >
+            {resettingSession ? 'Resetting...' : 'Reset AI'}
+          </button>
           <span className={`status-badge ${conversation.status.toLowerCase()}`}>{conversation.status}</span>
         </div>
       </div>

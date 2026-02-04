@@ -422,6 +422,11 @@ export const api = {
       method: 'POST',
     }),
   
+  resetAISession: (tenantId: string, conversationId: string) =>
+    request<{ success: boolean; session: unknown }>(`${API_BASE}/tenants/${tenantId}/conversations/${conversationId}/ai-session/reset`, {
+      method: 'POST',
+    }),
+  
   updateConversation: (tenantId: string, conversationId: string, data: { status?: string; aiAgentEnabled?: boolean }) =>
     request<Conversation>(`${API_BASE}/tenants/${tenantId}/conversations/${conversationId}`, {
       method: 'PATCH',

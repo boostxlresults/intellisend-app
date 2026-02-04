@@ -154,6 +154,74 @@ router.post('/tenants/:tenantId/ai-agent/sessions/:sessionId/handoff', async (re
   }
 });
 
+// Reset AI session to allow fresh conversation
+router.post('/tenants/:tenantId/ai-agent/sessions/:sessionId/reset', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, sessionId } = req.params;
+
+    const existingSession = await prisma.aIAgentSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!existingSession) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (existingSession.tenantId !== tenantId) {
+      return res.status(403).json({ error: 'Session does not belong to this tenant' });
+    }
+
+    const session = await prisma.aIAgentSession.update({
+      where: { id: sessionId },
+      data: {
+        state: 'INBOUND_RECEIVED',
+        outcome: 'PENDING',
+        messageCount: 0,
+      },
+    });
+
+    console.log(`[AI Agent] Session ${sessionId} reset by CSR`);
+    res.json({ success: true, session });
+  } catch (error: any) {
+    console.error('Error resetting session:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset AI session by conversation ID
+router.post('/tenants/:tenantId/conversations/:conversationId/ai-session/reset', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, conversationId } = req.params;
+
+    const session = await prisma.aIAgentSession.findUnique({
+      where: { conversationId },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'No AI session found for this conversation' });
+    }
+
+    if (session.tenantId !== tenantId) {
+      return res.status(403).json({ error: 'Session does not belong to this tenant' });
+    }
+
+    const updated = await prisma.aIAgentSession.update({
+      where: { id: session.id },
+      data: {
+        state: 'INBOUND_RECEIVED',
+        outcome: 'PENDING',
+        messageCount: 0,
+      },
+    });
+
+    console.log(`[AI Agent] Session for conversation ${conversationId} reset by CSR`);
+    res.json({ success: true, session: updated });
+  } catch (error: any) {
+    console.error('Error resetting session:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/tenants/:tenantId/offer-contexts', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.params;

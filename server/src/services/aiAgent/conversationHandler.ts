@@ -75,6 +75,23 @@ export async function handleInboundMessage(
       },
       include: { offerContext: true },
     });
+  } else {
+    // Auto-reset session if inactive for more than 24 hours or in terminal state
+    const hoursSinceLastUpdate = (Date.now() - new Date(session.updatedAt).getTime()) / (1000 * 60 * 60);
+    const terminalOutcomes = ['BOOKED', 'NOT_INTERESTED', 'NEEDS_HUMAN'];
+    const isTerminalState = terminalOutcomes.includes(session.outcome as string);
+    if (hoursSinceLastUpdate > 24 || isTerminalState) {
+      console.log(`[AI Agent] Auto-resetting session ${session.id} (inactive for ${Math.round(hoursSinceLastUpdate)} hours or in terminal state: ${session.outcome})`);
+      session = await prisma.aIAgentSession.update({
+        where: { id: session.id },
+        data: {
+          state: 'INBOUND_RECEIVED',
+          outcome: 'PENDING',
+          messageCount: 0,
+        },
+        include: { offerContext: true },
+      });
+    }
   }
 
   await prisma.aIAgentSession.update({
