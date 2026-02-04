@@ -28,7 +28,8 @@ import billingRoutes from './routes/billing';
 import serviceTitanRoutes from './routes/serviceTitan';
 import aiAgentRoutes from './routes/aiAgent';
 import { requireAuth } from './middleware/auth';
-import { registerObjectStorageRoutes } from './replit_integrations/object_storage';
+// Object storage routes are only available in Replit environment
+// Import is done dynamically to avoid errors on Railway
 import { startCampaignScheduler } from './services/campaignScheduler';
 import { startQueueDispatcher } from './services/queueDispatcher';
 import { startSequenceProcessor } from './services/sequenceProcessor';
@@ -105,7 +106,15 @@ app.use('/', linkRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 
-registerObjectStorageRoutes(app);
+// Only register object storage routes in Replit environment (dynamic import to avoid errors on Railway)
+if (process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
+  import('./replit_integrations/object_storage').then(({ registerObjectStorageRoutes }) => {
+    registerObjectStorageRoutes(app);
+    console.log('Object storage routes registered');
+  }).catch((err) => {
+    console.log('Object storage not available:', err.message);
+  });
+}
 
 app.use(express.static(path.join(__dirname, '../public')));
 
