@@ -36,6 +36,7 @@ export default function Campaigns() {
   const [aiGoal, setAiGoal] = useState<AiGoal>('higher_reply_rate');
   const [improvedMessage, setImprovedMessage] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
   const [complianceLoading, setComplianceLoading] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceChecklist>({
     consentVerified: false,
@@ -91,6 +92,7 @@ export default function Campaigns() {
     setMessageBody('');
     setUseAi(false);
     setImprovedMessage('');
+    setImageUrl('');
   };
 
   const handleTemplateSelect = (templateId: string) => {
@@ -139,6 +141,7 @@ export default function Campaigns() {
           bodyTemplate: improvedMessage || messageBody,
           delayMinutes: 0,
           useAiAssist: useAi,
+          mediaUrl: imageUrl || undefined,
         }],
       });
       
@@ -325,6 +328,18 @@ export default function Campaigns() {
               />
               <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
                 Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{phone}}'}, {'{{companyName}}'}, {'{{agentName}}'}
+              </p>
+            </div>
+            <div className="form-group">
+              <label>Image URL (Optional - for MMS)</label>
+              <input
+                type="url"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://example.com/image.jpg"
+              />
+              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                Add a publicly accessible image URL to send as MMS. Supported: JPG, PNG, GIF (max 5MB)
               </p>
             </div>
             <div className="form-group">
