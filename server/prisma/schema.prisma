@@ -303,6 +303,7 @@ model CampaignStep {
   bodyTemplate String
   useAiAssist  Boolean  @default(false)
   mediaUrl     String?
+  sendAsMms    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -485,6 +486,7 @@ model OutboundMessageQueue {
   phone          String
   body           String
   mediaUrl       String?             // MMS media URL
+  sendAsMms      Boolean             @default(false)
   fromNumber     String
   status         OutboundQueueStatus @default(PENDING)
   scheduledAt    DateTime            @default(now())
@@ -596,6 +598,7 @@ model CampaignVariant {
   bodyTemplate String
   splitPercent Int      @default(50) // Percentage of audience
   mediaUrl     String?
+  sendAsMms    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)

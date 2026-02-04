@@ -103,12 +103,18 @@ async function processOutboundQueue() {
           // Only apply rate limit to campaign/sequence messages
           const isConversationReply = !!queueItem.conversationId && !queueItem.campaignId && !queueItem.sequenceEnrollmentStepId;
           
+          // Determine media URL - if sendAsMms is true but no image, use transparent pixel to force MMS
+          let effectiveMediaUrl = queueItem.mediaUrl || undefined;
+          if (queueItem.sendAsMms && !effectiveMediaUrl) {
+            effectiveMediaUrl = 'https://upload.wikimedia.org/wikipedia/commons/c/ca/1x1.png';
+          }
+          
           const smsResult = await sendSmsForTenant({
             tenantId,
             fromNumber: queueItem.fromNumber,
             toNumber: queueItem.phone,
             body: queueItem.body,
-            mediaUrl: queueItem.mediaUrl || undefined,
+            mediaUrl: effectiveMediaUrl,
             skipOptOutFooter: true, // Opt-out footer already added when queued
             skipRateLimitCheck: isConversationReply, // Don't rate limit active conversations
           });
@@ -148,7 +154,7 @@ async function processOutboundQueue() {
               },
             });
 
-            await recordUsage(tenantId, queueItem.mediaUrl ? 'mms' : 'sms');
+            await recordUsage(tenantId, (queueItem.mediaUrl || queueItem.sendAsMms) ? 'mms' : 'sms');
 
             if (queueItem.sequenceEnrollmentStepId) {
               await prisma.sequenceEnrollmentStep.update({
@@ -271,6 +277,7 @@ export async function queueCampaignMessages(
     body: string;
     fromNumber: string;
     mediaUrl?: string;
+    sendAsMms?: boolean;
   }>
 ): Promise<{ queued: number }> {
   const sendSettings = await getTenantSendSettings(tenantId);
@@ -289,6 +296,7 @@ export async function queueCampaignMessages(
       body: msg.body,
       fromNumber: msg.fromNumber,
       mediaUrl: msg.mediaUrl || undefined,
+      sendAsMms: msg.sendAsMms || false,
       status: 'PENDING' as const,
       processAfter,
     };

@@ -108,6 +108,7 @@ async function processScheduledCampaigns() {
         body: string;
         fromNumber: string;
         mediaUrl?: string;
+        sendAsMms?: boolean;
       }> = [];
       
       let skippedCount = 0;
@@ -200,6 +201,7 @@ async function processScheduledCampaigns() {
             body: messageBody,
             fromNumber: sendContext.fromNumber,
             mediaUrl: (firstStep as any).mediaUrl || undefined,
+            sendAsMms: (firstStep as any).sendAsMms || false,
           });
           
           // Mark phone as processed to prevent duplicates from other contact records

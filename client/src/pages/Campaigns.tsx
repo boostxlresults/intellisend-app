@@ -37,6 +37,7 @@ export default function Campaigns() {
   const [improvedMessage, setImprovedMessage] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
+  const [sendAsMms, setSendAsMms] = useState(false);
   const [complianceLoading, setComplianceLoading] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceChecklist>({
     consentVerified: false,
@@ -142,6 +143,7 @@ export default function Campaigns() {
           delayMinutes: 0,
           useAiAssist: useAi,
           mediaUrl: imageUrl || undefined,
+          sendAsMms: sendAsMms,
         }],
       });
       
@@ -347,6 +349,20 @@ export default function Campaigns() {
                   <button type="button" className="btn btn-small btn-secondary" onClick={() => setImageUrl('')}>Clear</button>
                 </div>
               )}
+            </div>
+            <div className="form-group">
+              <div className="checkbox-group">
+                <input
+                  type="checkbox"
+                  id="sendAsMms"
+                  checked={sendAsMms}
+                  onChange={(e) => setSendAsMms(e.target.checked)}
+                />
+                <label htmlFor="sendAsMms" style={{ marginBottom: 0 }}>Send as MMS</label>
+              </div>
+              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                MMS supports up to 1,600 characters in a single message. Without this, long messages are split into multiple SMS segments.
+              </p>
             </div>
             <div className="form-group">
               <div className="checkbox-group">

@@ -50,6 +50,7 @@ router.post('/:tenantId/campaigns', async (req, res) => {
             bodyTemplate: step.bodyTemplate,
             useAiAssist: step.useAiAssist || false,
             mediaUrl: step.mediaUrl || undefined,
+            sendAsMms: step.sendAsMms || false,
           })),
         } : undefined,
       },
