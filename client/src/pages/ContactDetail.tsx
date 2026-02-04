@@ -507,45 +507,21 @@ export default function ContactDetail() {
                 />
               </div>
               <div className="form-group">
-                <label>Image (Optional - for MMS)</label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 5 * 1024 * 1024) {
-                        alert('Image must be under 5MB');
-                        return;
-                      }
-                      try {
-                        const res = await fetch('/api/uploads/request-url', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-                        });
-                        const { uploadURL, objectPath } = await res.json();
-                        await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-                        setMessageImageUrl(`${window.location.origin}${objectPath}`);
-                      } catch (err) {
-                        alert('Upload failed');
-                      }
-                    }}
-                  />
-                  {messageImageUrl && <button type="button" className="btn btn-small btn-secondary" onClick={() => setMessageImageUrl('')}>Clear</button>}
-                </div>
-                <p style={{ fontSize: '12px', color: '#718096' }}>Or paste URL:</p>
+                <label>Image URL (Optional - for MMS)</label>
                 <input
                   type="url"
                   value={messageImageUrl}
                   onChange={(e) => setMessageImageUrl(e.target.value)}
                   placeholder="https://example.com/image.jpg"
-                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', marginTop: '4px' }}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px' }}
                 />
+                <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                  Paste a publicly accessible image URL. Tip: Upload images to <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer">imgbb.com</a> for free hosting.
+                </p>
                 {messageImageUrl && (
-                  <div style={{ marginTop: '8px' }}>
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <img src={messageImageUrl} alt="Preview" style={{ maxWidth: '150px', maxHeight: '100px', borderRadius: '4px' }} />
+                    <button type="button" className="btn btn-small btn-secondary" onClick={() => setMessageImageUrl('')}>Clear</button>
                   </div>
                 )}
               </div>
