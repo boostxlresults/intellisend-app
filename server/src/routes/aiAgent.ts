@@ -57,7 +57,7 @@ router.post('/tenants/:tenantId/ai-agent/config', async (req: Request, res: Resp
         tenantId,
         enabled: enabled ?? false,
         autoRespond: autoRespond ?? true,
-        maxMessagesPerSession: maxMessagesPerSession ?? 10,
+        maxMessagesPerSession: maxMessagesPerSession ?? 50,
         qualificationThreshold: qualificationThreshold ?? 80,
         defaultBusinessUnitId,
         defaultJobTypeId,
