@@ -107,6 +107,7 @@ async function processScheduledCampaigns() {
         phone: string;
         body: string;
         fromNumber: string;
+        mediaUrl?: string;
       }> = [];
       
       let skippedCount = 0;
@@ -198,6 +199,7 @@ async function processScheduledCampaigns() {
             phone: contact.phone,
             body: messageBody,
             fromNumber: sendContext.fromNumber,
+            mediaUrl: (firstStep as any).mediaUrl || undefined,
           });
           
           // Mark phone as processed to prevent duplicates from other contact records

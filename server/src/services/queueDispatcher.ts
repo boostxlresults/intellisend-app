@@ -265,6 +265,7 @@ export async function queueCampaignMessages(
     phone: string;
     body: string;
     fromNumber: string;
+    mediaUrl?: string;
   }>
 ): Promise<{ queued: number }> {
   const sendSettings = await getTenantSendSettings(tenantId);
@@ -282,6 +283,7 @@ export async function queueCampaignMessages(
       phone: msg.phone,
       body: msg.body,
       fromNumber: msg.fromNumber,
+      mediaUrl: msg.mediaUrl || undefined,
       status: 'PENDING' as const,
       processAfter,
     };
