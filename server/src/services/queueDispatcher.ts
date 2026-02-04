@@ -99,6 +99,10 @@ async function processOutboundQueue() {
             continue;
           }
 
+          // Skip rate limit for conversation replies (AI agent responses, direct replies)
+          // Only apply rate limit to campaign/sequence messages
+          const isConversationReply = !!queueItem.conversationId && !queueItem.campaignId && !queueItem.sequenceEnrollmentStepId;
+          
           const smsResult = await sendSmsForTenant({
             tenantId,
             fromNumber: queueItem.fromNumber,
@@ -106,6 +110,7 @@ async function processOutboundQueue() {
             body: queueItem.body,
             mediaUrl: queueItem.mediaUrl || undefined,
             skipOptOutFooter: true, // Opt-out footer already added when queued
+            skipRateLimitCheck: isConversationReply, // Don't rate limit active conversations
           });
 
           if (smsResult.rateLimited) {
