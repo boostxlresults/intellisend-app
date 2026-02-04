@@ -397,14 +397,14 @@ export const api = {
       body: JSON.stringify({ contactId }),
     }),
   
-  startConversation: async (tenantId: string, contactId: string, message: string): Promise<{ conversationId: string }> => {
+  startConversation: async (tenantId: string, contactId: string, message: string, mediaUrl?: string): Promise<{ conversationId: string }> => {
     const conversation = await request<Conversation>(`${API_BASE}/tenants/${tenantId}/conversations`, {
       method: 'POST',
       body: JSON.stringify({ contactId }),
     });
     await request<{ message: Message }>(`${API_BASE}/tenants/${tenantId}/conversations/${conversation.id}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body: message }),
+      body: JSON.stringify({ body: message, mediaUrl }),
     });
     return { conversationId: conversation.id };
   },

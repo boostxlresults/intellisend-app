@@ -20,6 +20,7 @@ export default function ContactDetail() {
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageText, setMessageText] = useState('');
+  const [messageImageUrl, setMessageImageUrl] = useState('');
   const [sending, setSending] = useState(false);
   const [togglingAI, setTogglingAI] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -176,9 +177,10 @@ export default function ContactDetail() {
     if (!selectedTenant || !contactId || !messageText.trim()) return;
     setSending(true);
     try {
-      const result = await api.startConversation(selectedTenant.id, contactId, messageText.trim());
+      const result = await api.startConversation(selectedTenant.id, contactId, messageText.trim(), messageImageUrl || undefined);
       setShowMessageModal(false);
       setMessageText('');
+      setMessageImageUrl('');
       navigate(`/conversations/${result.conversationId}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -503,8 +505,18 @@ export default function ContactDetail() {
                   style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px', resize: 'vertical' }}
                   required
                 />
+              </div>
+              <div className="form-group">
+                <label>Image URL (Optional - for MMS)</label>
+                <input
+                  type="url"
+                  value={messageImageUrl}
+                  onChange={(e) => setMessageImageUrl(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  style={{ width: '100%', padding: '10px', border: '1px solid #cbd5e0', borderRadius: '6px' }}
+                />
                 <p style={{ fontSize: '12px', color: '#718096', marginTop: '6px' }}>
-                  This will start a new conversation with {contact.phone}
+                  Add a publicly accessible image URL to send as MMS
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
