@@ -191,6 +191,7 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
       toNumber: conversation.contact.phone,
       body,
       mediaUrl: mediaUrlToUse || undefined,
+      skipRateLimitCheck: true,
     });
     
     const message = await prisma.message.create({
