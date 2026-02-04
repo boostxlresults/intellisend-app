@@ -245,6 +245,7 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         conversationUrl: `${frontendUrl}/conversations/${conversation.id}`,
         messages: conversationMessages,
         serviceTitanEnabled: stConfig?.enabled || false,
+        timezone: tenantSettings.timezone || 'America/Phoenix',
       }).catch(err => console.error('[Email] Async notification error:', err));
     }
     

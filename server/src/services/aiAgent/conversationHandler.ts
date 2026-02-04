@@ -1096,6 +1096,7 @@ async function handoffToCSR(
           createdAt: m.createdAt,
         })),
         serviceTitanEnabled: stBookingCreated,
+        timezone: tenantSettings.timezone || 'America/Phoenix',
       });
       console.log(`[AI Agent] Email notification sent to ${tenant.notificationEmail} for handoff (ST booking: ${stBookingCreated})`);
     } catch (emailError) {
@@ -1219,6 +1220,58 @@ async function getServiceTitanCustomerContext(
   }
 }
 
+async function generateKBFallbackResponse(
+  tenant: any,
+  contact: any,
+  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
+): Promise<string> {
+  try {
+    const knowledgeArticles = await getKnowledgeSnippetsForTenant(tenant.id, 10);
+    if (knowledgeArticles.length === 0) {
+      return "Thanks for your message! We'll be in touch shortly.";
+    }
+
+    const lastCustomerMessage = conversationHistory.filter(m => m.role === 'customer').pop()?.body.toLowerCase() || '';
+    const searchTerms = lastCustomerMessage.split(/\s+/).filter(w => w.length > 3);
+    
+    let bestMatch: { title: string; content: string; score: number } | null = null;
+    
+    for (const article of knowledgeArticles) {
+      const articleText = `${article.title} ${article.topic} ${article.content}`.toLowerCase();
+      let score = 0;
+      
+      for (const term of searchTerms) {
+        if (articleText.includes(term)) {
+          score += 1;
+        }
+      }
+      
+      if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+        bestMatch = { title: article.title, content: article.content, score };
+      }
+    }
+    
+    if (bestMatch) {
+      const firstName = contact.firstName || '';
+      const snippet = bestMatch.content.substring(0, 120).trim();
+      const response = firstName 
+        ? `Hi ${firstName}! ${snippet}... Text back for more info!`
+        : `${snippet}... Text back for more info!`;
+      return response.substring(0, 160);
+    }
+    
+    const genericArticle = knowledgeArticles[0];
+    const firstName = contact.firstName || '';
+    const response = firstName
+      ? `Hi ${firstName}! Thanks for reaching out to ${tenant.publicName || tenant.name}. We'll have someone reach out shortly!`
+      : `Thanks for reaching out to ${tenant.publicName || tenant.name}! We'll have someone reach out shortly!`;
+    return response.substring(0, 160);
+  } catch (error) {
+    console.error('[AI Agent] KB fallback error:', error);
+    return "Thanks for your message! We'll be in touch shortly.";
+  }
+}
+
 async function generateResponse(
   tenant: any,
   contact: any,
@@ -1228,7 +1281,8 @@ async function generateResponse(
   botName?: string | null
 ): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {
-    return "Thanks for your message! We'll be in touch shortly.";
+    console.log('[AI Agent] No OpenAI API key - using KB fallback');
+    return await generateKBFallbackResponse(tenant, contact, conversationHistory);
   }
 
   // Read ServiceTitan context from session (cached from first message lookup)
@@ -1333,8 +1387,8 @@ Write ONLY the SMS message text, nothing else:`;
     const text = response.choices[0]?.message?.content?.trim() || '';
     return text.substring(0, 300);
   } catch (error) {
-    console.error('Generate response error:', error);
-    return "Thanks for your message! We'll be in touch shortly.";
+    console.error('[AI Agent] OpenAI error, using KB fallback:', error);
+    return await generateKBFallbackResponse(tenant, contact, conversationHistory);
   }
 }
 

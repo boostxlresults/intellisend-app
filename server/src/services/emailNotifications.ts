@@ -27,22 +27,25 @@ interface SendReplyNotificationOptions {
   conversationUrl: string;
   messages: ConversationMessage[];
   serviceTitanEnabled?: boolean;
+  timezone?: string;
 }
 
-function formatConversationHtml(messages: ConversationMessage[], contactName: string): string {
+function formatConversationHtml(messages: ConversationMessage[], contactName: string, timezone?: string): string {
   if (!messages || messages.length === 0) {
     return '<p style="color: #718096; font-style: italic;">No messages in conversation.</p>';
   }
 
   return messages.map(msg => {
     const isInbound = msg.direction === 'INBOUND';
-    const timestamp = new Date(msg.createdAt).toLocaleString('en-US', {
+    const dateOptions: Intl.DateTimeFormatOptions = {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
-    });
+      hour12: true,
+      ...(timezone && { timeZone: timezone }),
+    };
+    const timestamp = new Date(msg.createdAt).toLocaleString('en-US', dateOptions);
     
     const bgColor = isInbound ? '#e6f3ff' : '#f0f0f0';
     const borderColor = isInbound ? '#3182ce' : '#a0aec0';
@@ -67,7 +70,7 @@ export async function sendReplyNotification(options: SendReplyNotificationOption
   }
 
   try {
-    const conversationHtml = formatConversationHtml(options.messages, options.contactName);
+    const conversationHtml = formatConversationHtml(options.messages, options.contactName, options.timezone);
     
     const serviceTitanSection = options.serviceTitanEnabled ? `
       <a href="https://go.servicetitan.com/#/Bookings" 
