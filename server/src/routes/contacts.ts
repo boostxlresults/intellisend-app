@@ -5,7 +5,10 @@ import { prisma } from '../index';
 import { upsertTagsForContact } from './tags';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit for large CSV imports
+});
 
 router.get('/:tenantId/contacts', async (req, res) => {
   try {
@@ -275,49 +278,76 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
     let failed = 0;
     const errors: { phone: string; error: string }[] = [];
     
+    // Filter out contacts without phone numbers
+    const validContacts: typeof contactsData = [];
     for (const c of contactsData) {
       if (!c.phone) {
         failed++;
         errors.push({ phone: 'unknown', error: 'Phone number is required' });
-        continue;
+      } else {
+        validContacts.push(c);
       }
+    }
+    
+    // Process in batches of 500 for efficiency
+    const BATCH_SIZE = 500;
+    const batches = [];
+    for (let i = 0; i < validContacts.length; i += BATCH_SIZE) {
+      batches.push(validContacts.slice(i, i + BATCH_SIZE));
+    }
+    
+    console.log(`[Import] Processing ${validContacts.length} contacts in ${batches.length} batches of ${BATCH_SIZE}`);
+    
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      console.log(`[Import] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} contacts)`);
       
       try {
-        const allTags = [...(c.tags || []), ...globalTags];
+        // Get all phones in this batch
+        const batchPhones = batch.map(c => c.phone);
         
-        // Auto-add ZIP code as a tag for geo-targeting
-        if (c.zip) {
-          const zipTag = c.zip.toString().trim().substring(0, 5); // Get 5-digit ZIP
-          if (zipTag && /^\d{5}$/.test(zipTag)) {
-            allTags.push(zipTag);
-          }
-        }
-        
-        const uniqueTags = [...new Set(allTags)].filter(Boolean);
-        
-        const existing = await prisma.contact.findFirst({
-          where: { tenantId, phone: c.phone },
+        // Find existing contacts in one query
+        const existingContacts = await prisma.contact.findMany({
+          where: { tenantId, phone: { in: batchPhones } },
+          select: { id: true, phone: true, firstName: true, lastName: true, email: true, address: true, city: true, state: true, zip: true },
         });
         
-        let contactId: string;
+        const existingByPhone = new Map(existingContacts.map(c => [c.phone, c]));
         
-        if (existing) {
-          await prisma.contact.update({
-            where: { id: existing.id },
-            data: {
-              firstName: c.firstName || existing.firstName,
-              lastName: c.lastName || existing.lastName,
-              email: c.email || existing.email,
-              address: c.address || existing.address,
-              city: c.city || existing.city,
-              state: c.state || existing.state,
-              zip: c.zip || existing.zip,
-            },
-          });
-          contactId = existing.id;
-        } else {
-          const newContact = await prisma.contact.create({
-            data: {
+        // Separate new vs existing
+        const toCreate: any[] = [];
+        const toUpdate: { id: string; data: any; tags: string[] }[] = [];
+        
+        for (const c of batch) {
+          const allTags = [...(c.tags || []), ...globalTags];
+          
+          // Auto-add ZIP code as a tag for geo-targeting
+          if (c.zip) {
+            const zipTag = c.zip.toString().trim().substring(0, 5);
+            if (zipTag && /^\d{5}$/.test(zipTag)) {
+              allTags.push(zipTag);
+            }
+          }
+          
+          const uniqueTags = [...new Set(allTags)].filter(Boolean);
+          const existing = existingByPhone.get(c.phone);
+          
+          if (existing) {
+            toUpdate.push({
+              id: existing.id,
+              data: {
+                firstName: c.firstName || existing.firstName,
+                lastName: c.lastName || existing.lastName,
+                email: c.email || existing.email,
+                address: c.address || existing.address,
+                city: c.city || existing.city,
+                state: c.state || existing.state,
+                zip: c.zip || existing.zip,
+              },
+              tags: uniqueTags,
+            });
+          } else {
+            toCreate.push({
               tenantId,
               firstName: c.firstName || 'Unknown',
               lastName: c.lastName || 'Contact',
@@ -331,21 +361,74 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
               customerType: c.customerType || 'LEAD',
               consentSource: c.consentSource || 'import',
               consentTimestamp: new Date(),
-            },
+              _tags: uniqueTags, // Temporary field for tag processing
+            });
+          }
+        }
+        
+        // Batch create new contacts
+        if (toCreate.length > 0) {
+          const createData = toCreate.map(c => {
+            const { _tags, ...contactData } = c;
+            return contactData;
           });
-          contactId = newContact.id;
+          
+          await prisma.contact.createMany({
+            data: createData,
+            skipDuplicates: true,
+          });
+          
+          // Get the created contacts to apply tags
+          const createdPhones = toCreate.map(c => c.phone);
+          const createdContacts = await prisma.contact.findMany({
+            where: { tenantId, phone: { in: createdPhones } },
+            select: { id: true, phone: true },
+          });
+          
+          const createdByPhone = new Map(createdContacts.map(c => [c.phone, c.id]));
+          
+          // Apply tags to new contacts
+          for (const c of toCreate) {
+            const contactId = createdByPhone.get(c.phone);
+            if (contactId && c._tags.length > 0) {
+              try {
+                await upsertTagsForContact(tenantId, contactId, c._tags);
+              } catch (tagErr) {
+                // Tag errors are non-fatal
+              }
+            }
+          }
+          
+          imported += toCreate.length;
         }
         
-        if (uniqueTags.length > 0) {
-          await upsertTagsForContact(tenantId, contactId, uniqueTags);
+        // Batch update existing contacts
+        for (const update of toUpdate) {
+          try {
+            await prisma.contact.update({
+              where: { id: update.id },
+              data: update.data,
+            });
+            
+            if (update.tags.length > 0) {
+              await upsertTagsForContact(tenantId, update.id, update.tags);
+            }
+            
+            imported++;
+          } catch (updateErr: any) {
+            failed++;
+            errors.push({ phone: 'update-error', error: updateErr.message });
+          }
         }
         
-        imported++;
-      } catch (err: any) {
-        failed++;
-        errors.push({ phone: c.phone, error: err.message });
+      } catch (batchErr: any) {
+        console.error(`[Import] Batch ${batchIndex + 1} failed:`, batchErr.message);
+        failed += batch.length;
+        errors.push({ phone: `batch-${batchIndex + 1}`, error: batchErr.message });
       }
     }
+    
+    console.log(`[Import] Complete: ${imported} imported, ${failed} failed`);
     
     res.json({
       imported,
