@@ -137,7 +137,8 @@ router.get('/:tenantId/conversations/:conversationId', async (req, res) => {
 router.post('/:tenantId/conversations/:conversationId/messages', async (req, res) => {
   try {
     const { tenantId, conversationId } = req.params;
-    const { body, fromNumber } = req.body;
+    const { body, fromNumber, imageUrl, mediaUrl } = req.body;
+    const mediaUrlToUse = imageUrl || mediaUrl;
     
     if (!body) {
       return res.status(400).json({ error: 'body is required' });
@@ -189,6 +190,7 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
       fromNumber: senderNumber,
       toNumber: conversation.contact.phone,
       body,
+      mediaUrl: mediaUrlToUse || undefined,
     });
     
     const message = await prisma.message.create({
@@ -199,6 +201,7 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
         direction: 'OUTBOUND',
         channel: 'SMS',
         body,
+        mediaUrl: mediaUrlToUse || undefined,
         fromNumber: senderNumber,
         toNumber: conversation.contact.phone,
         twilioMessageSid: smsResult.messageSid,
