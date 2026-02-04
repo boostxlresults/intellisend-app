@@ -802,6 +802,7 @@ export interface AIAgentConfig {
   tenantId: string;
   enabled: boolean;
   autoRespond: boolean;
+  botName?: string | null;
   maxMessagesPerSession: number;
   qualificationThreshold: number;
   defaultBusinessUnitId?: string | null;

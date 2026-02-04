@@ -61,6 +61,7 @@ export default function Settings() {
   const [aiAgentForm, setAiAgentForm] = useState({
     enabled: false,
     autoRespond: true,
+    botName: '',
     maxMessagesPerSession: 10,
     qualificationThreshold: 80,
     responseDelaySeconds: 30,
@@ -112,6 +113,7 @@ export default function Settings() {
         setAiAgentForm({
           enabled: aiData.enabled,
           autoRespond: aiData.autoRespond,
+          botName: aiData.botName || '',
           maxMessagesPerSession: aiData.maxMessagesPerSession,
           qualificationThreshold: aiData.qualificationThreshold,
           responseDelaySeconds: aiData.responseDelaySeconds,
@@ -463,6 +465,7 @@ export default function Settings() {
       const savedConfig = await api.updateAIAgentConfig(selectedTenant.id, {
         enabled: aiAgentForm.enabled,
         autoRespond: aiAgentForm.autoRespond,
+        botName: aiAgentForm.botName || null,
         maxMessagesPerSession: aiAgentForm.maxMessagesPerSession,
         qualificationThreshold: aiAgentForm.qualificationThreshold,
         responseDelaySeconds: aiAgentForm.responseDelaySeconds,
@@ -1104,6 +1107,20 @@ export default function Settings() {
                   onChange={(e) => setAiAgentForm(prev => ({ ...prev, autoRespond: e.target.checked }))}
                 />
                 <label htmlFor="aiAgentAutoRespond">Auto-respond to inbound messages</label>
+              </div>
+              
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label>Bot Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Sarah, Alex, Sam"
+                  value={aiAgentForm.botName}
+                  onChange={(e) => setAiAgentForm(prev => ({ ...prev, botName: e.target.value }))}
+                  style={{ maxWidth: '300px' }}
+                />
+                <p style={{ fontSize: '11px', color: '#718096', marginTop: '4px' }}>
+                  The name the AI will use when introducing itself to customers (optional)
+                </p>
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>

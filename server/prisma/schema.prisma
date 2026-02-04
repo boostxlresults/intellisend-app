@@ -863,6 +863,7 @@ model AIAgentConfig {
   tenantId              String   @unique
   enabled               Boolean  @default(false)
   autoRespond           Boolean  @default(true)  // Auto-send AI responses
+  botName               String?  // Customer-facing name for the AI (e.g., "Sarah", "Alex")
   maxMessagesPerSession Int      @default(10)    // Max AI messages before handoff
   qualificationThreshold Int     @default(80)    // Score needed for full booking
   defaultBusinessUnitId String?

@@ -220,7 +220,8 @@ export async function handleInboundMessage(
         contact,
         session,
         'Customer declined. Send a brief, polite acknowledgment thanking them for their time.',
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       await updateSessionState(session.id, 'COMPLETED', 'NOT_INTERESTED');
       return {
@@ -236,7 +237,8 @@ export async function handleInboundMessage(
         contact,
         session,
         'Customer wants to delay. Acknowledge politely and let them know they can reply anytime when ready.',
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       await updateSessionState(session.id, 'COMPLETED', 'NOT_INTERESTED');
       return {
@@ -253,7 +255,8 @@ export async function handleInboundMessage(
         contact,
         session,
         `Customer asked a question: "${classification.extractedData.question || messageBody}". Be helpful and informative. The conversation context is: "${lastBusinessMessage.substring(0, 100)}". Answer their question thoroughly and conversationally. Do NOT push for scheduling - just be helpful. If they want to book, they'll ask.`,
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       await updateSessionState(session.id, 'CONVERSING', 'PENDING');
       return {
@@ -269,7 +272,8 @@ export async function handleInboundMessage(
         contact,
         session,
         `Customer showed interest and wants to learn more. Be friendly, helpful, and conversational. Share useful information about the topic they're interested in. Do NOT push for scheduling or try to book an appointment - just have a natural, informative conversation. Answer any implied questions. If they want to schedule, they will ask directly.`,
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       await updateSessionState(session.id, 'CONVERSING', 'PENDING');
       return {
@@ -316,7 +320,8 @@ export async function handleInboundMessage(
         contact,
         session,
         'Customer response was unclear. Ask a friendly, open-ended question to understand what they need help with. Be conversational and helpful, not salesy.',
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       await updateSessionState(session.id, 'CONVERSING', 'PENDING');
       return {
@@ -384,7 +389,8 @@ async function handleBookingIntent(
       const confirmIdentityResponse = await generateResponse(
         tenant, contact, session,
         `I found an account for "${customer.name}" with this phone number. Is that you?`,
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       
       return {
@@ -421,7 +427,8 @@ async function handleBookingIntent(
       const confirmAddressResponse = await generateResponse(
         tenant, contact, session,
         `Great - I found your account! Just to confirm, is "${addressStr}" still the best address for today's service? Just reply yes or give me the correct address.`,
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       
       return {
@@ -439,7 +446,8 @@ async function handleBookingIntent(
     const askAddressResponse = await generateResponse(
       tenant, contact, session,
       "I'd love to help get you scheduled! What's the address where you'd like the service? Please include street, city, and zip.",
-      conversationHistory
+      conversationHistory,
+      config.botName
     );
     
     await prisma.aIAgentSession.update({
@@ -476,7 +484,8 @@ async function handleBookingIntent(
     const confirmIdentityResponse = await generateResponse(
       tenant, contact, session,
       `I found an account at that address under the name "${match.customerName}". Is that you? Just reply yes or no.`,
-      conversationHistory
+      conversationHistory,
+      config.botName
     );
     
     return {
@@ -504,7 +513,8 @@ async function handleBookingIntent(
       const askNameResponse = await generateResponse(
         tenant, contact, session,
         "Almost there! What name should I put on the account?",
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       
       await prisma.aIAgentSession.update({
@@ -544,7 +554,8 @@ async function handleBookingIntent(
         const confirmNameMatchResponse = await generateResponse(
           tenant, contact, session,
           `I found an account for "${match.customerName}" at ${match.address}. Is that you? Just reply yes or no.`,
-          conversationHistory
+          conversationHistory,
+          config.botName
         );
         
         return {
@@ -721,7 +732,8 @@ async function handleTimeSlotSelection(
   const confirmResponse = await generateResponse(
     tenant, contact, session,
     `Appointment successfully booked for ${selectedSlot.displayText}! Confirm the booking and let them know a technician will arrive during that window. Thank them for choosing us.`,
-    conversationHistory
+    conversationHistory,
+    config.botName
   );
 
   return {
@@ -808,7 +820,8 @@ async function processFullBooking(
     contact,
     session,
     `Appointment successfully booked! Confirm the booking with the customer. Mention we'll see them soon and a technician will arrive during the scheduled window. Keep it brief and friendly.`,
-    conversationHistory
+    conversationHistory,
+    config.botName
   );
 
   return {
@@ -875,7 +888,7 @@ async function processCSRBooking(
     session,
     'Customer is interested but we need to connect them with our team. Let them know someone will reach out shortly to finalize their appointment. Be warm and appreciative.',
     conversationHistory
-  );
+  ); // Note: processCSRBooking doesn't have config, so botName not passed here
 
   return {
     shouldRespond: true,
@@ -918,7 +931,8 @@ async function handleCallMeRequest(
   const callbackResponse = await generateResponse(
     tenant, contact, session,
     'Customer specifically asked for someone to call them. Let them know warmly that someone from the team will give them a call shortly. Be friendly and appreciative of their interest.',
-    conversationHistory
+    conversationHistory,
+    config.botName
   );
 
   return {
@@ -961,7 +975,8 @@ async function handleIdentityConfirmation(
       const askNewAddressResponse = await generateResponse(
         tenant, contact, session,
         "They said that's not their current address. Ask them nicely for the correct address where they'd like the service. Be friendly - maybe they moved or it's a different property.",
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       
       await prisma.aIAgentSession.update({
@@ -980,7 +995,8 @@ async function handleIdentityConfirmation(
       const askAddressResponse = await generateResponse(
         tenant, contact, session,
         "They said that's not them. Apologize for the mixup and ask for their full service address so we can set them up properly. Be friendly and understanding.",
-        conversationHistory
+        conversationHistory,
+        config.botName
       );
       
       await prisma.aIAgentSession.update({
@@ -1191,7 +1207,8 @@ async function generateResponse(
   contact: any,
   session: any,
   instruction: string,
-  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>
+  conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>,
+  botName?: string | null
 ): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {
     return "Thanks for your message! We'll be in touch shortly.";
@@ -1226,9 +1243,11 @@ async function generateResponse(
       knowledgeContext = `\n\nKNOWLEDGE BASE (Use this information to answer questions accurately):\n${knowledgeArticles.map(a => `### ${a.title}\n${a.content}`).join('\n\n')}`;
     }
 
+    const botIdentity = botName ? `Your name is ${botName}. ` : '';
+    
     const systemPrompt = `${persona.systemPrompt}
 
-You are responding on behalf of ${tenant.publicName || tenant.name}.
+${botIdentity}You are responding on behalf of ${tenant.publicName || tenant.name}.
 ${knowledgeContext}
 
 PERSONALITY:
@@ -1237,6 +1256,7 @@ PERSONALITY:
 - Sound human and genuine, not robotic or scripted
 - Show enthusiasm when appropriate ("Great!", "Awesome!", "Perfect!")
 - Be empathetic and understanding
+${botName ? `- When introducing yourself for the first time, say something like "Hi, I'm ${botName} with ${tenant.publicName || tenant.name}!"` : ''}
 
 RULES:
 1. Keep response under 160 characters (SMS limit)
