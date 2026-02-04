@@ -29,6 +29,7 @@ export default function ContactDetail() {
   const [notes, setNotes] = useState<{ id: string; content: string; createdBy?: string; createdAt: string }[]>([]);
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [suppression, setSuppression] = useState<{ phone: string; reason: string; createdAt: string } | null>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -91,11 +92,32 @@ export default function ContactDetail() {
     }
   };
 
+  const fetchSuppression = async () => {
+    if (!selectedTenant || !contact?.phone) return;
+    try {
+      const suppressions = await api.getSuppressions(selectedTenant.id);
+      const normalizedPhone = contact.phone.replace(/\D/g, '');
+      const found = suppressions.find(s => {
+        const suppPhone = s.phone.replace(/\D/g, '');
+        return suppPhone === normalizedPhone || suppPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(suppPhone);
+      });
+      setSuppression(found || null);
+    } catch (error) {
+      console.error('Failed to check suppression:', error);
+    }
+  };
+
   useEffect(() => {
     fetchContact();
     fetchTags();
     fetchNotes();
   }, [selectedTenant, contactId]);
+
+  useEffect(() => {
+    if (contact?.phone) {
+      fetchSuppression();
+    }
+  }, [contact?.phone, selectedTenant]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -312,6 +334,27 @@ export default function ContactDetail() {
                 </span>
               </label>
             </div>
+            {suppression && (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                padding: '12px',
+                backgroundColor: '#fed7d7',
+                borderRadius: '8px',
+                border: '1px solid #fc8181',
+                marginTop: '8px'
+              }}>
+                <span style={{ color: '#c53030', fontSize: '18px' }}>⛔</span>
+                <div>
+                  <strong style={{ color: '#c53030' }}>Opted Out</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#742a2a' }}>
+                    This contact is on the suppression list ({suppression.reason}). 
+                    Messages will not be sent to them.
+                  </p>
+                </div>
+              </div>
+            )}
             {contact.address && (
               <div>
                 <strong>Address:</strong> {contact.address}, {contact.city}, {contact.state} {contact.zip}

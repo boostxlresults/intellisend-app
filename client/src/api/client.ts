@@ -123,6 +123,8 @@ export interface CampaignStep {
   delayMinutes: number;
   bodyTemplate: string;
   useAiAssist: boolean;
+  mediaUrl?: string;
+  sendAsMms?: boolean;
 }
 
 export interface Suppression {
