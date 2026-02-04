@@ -187,6 +187,25 @@ export default function ConversationDetail() {
             key={msg.id}
             className={`message ${msg.direction.toLowerCase()}`}
           >
+            {msg.mediaUrl && (
+              <div style={{ marginBottom: '8px' }}>
+                <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
+                  <img 
+                    src={msg.mediaUrl} 
+                    alt="MMS attachment" 
+                    style={{ 
+                      maxWidth: '200px', 
+                      maxHeight: '200px', 
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                    }} 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </a>
+              </div>
+            )}
             <div>{msg.body}</div>
             <div className="message-time">
               {new Date(msg.createdAt).toLocaleString()}

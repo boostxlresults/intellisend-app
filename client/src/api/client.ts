@@ -83,6 +83,7 @@ export interface Message {
   contactId: string;
   direction: 'OUTBOUND' | 'INBOUND';
   body: string;
+  mediaUrl?: string | null;
   fromNumber: string;
   toNumber: string;
   status?: string;

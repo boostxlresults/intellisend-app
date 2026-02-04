@@ -43,9 +43,20 @@ async function enqueueServiceTitanBookingJob(
 
 router.post('/inbound', validateTwilioSignature, async (req, res) => {
   try {
-    const { From, To, Body, MessageSid } = req.body;
+    const { From, To, Body, MessageSid, NumMedia } = req.body;
     
-    console.log(`Inbound SMS received: From=${From}, To=${To}, Body=${Body?.substring(0, 50)}...`);
+    // Extract media URLs from MMS (Twilio sends MediaUrl0, MediaUrl1, etc.)
+    const mediaUrls: string[] = [];
+    const numMedia = parseInt(NumMedia || '0', 10);
+    for (let i = 0; i < numMedia; i++) {
+      const mediaUrl = req.body[`MediaUrl${i}`];
+      if (mediaUrl) {
+        mediaUrls.push(mediaUrl);
+      }
+    }
+    const primaryMediaUrl = mediaUrls.length > 0 ? mediaUrls[0] : null;
+    
+    console.log(`Inbound SMS received: From=${From}, To=${To}, Body=${Body?.substring(0, 50)}...${numMedia > 0 ? ` (${numMedia} media attachments)` : ''}`);
     
     const tenantNumber = await prisma.tenantNumber.findFirst({
       where: { phoneNumber: To },
@@ -141,6 +152,7 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         direction: 'INBOUND',
         channel: 'SMS',
         body: Body || '',
+        mediaUrl: primaryMediaUrl,
         fromNumber: From,
         toNumber: To,
         twilioMessageSid: MessageSid,
