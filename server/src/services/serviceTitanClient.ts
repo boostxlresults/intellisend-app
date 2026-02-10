@@ -108,6 +108,14 @@ export async function createBookingFromInboundSms(
   options: CreateBookingFromInboundSmsOptions
 ): Promise<BookingResult> {
   try {
+    if (options.conversationId) {
+      const convo = await prisma.conversation.findUnique({ where: { id: options.conversationId }, select: { isTestConversation: true } });
+      if (convo?.isTestConversation) {
+        console.log(`[ServiceTitan] TEST MODE: Skipping booking creation for test conversation ${options.conversationId}`);
+        return { success: true, bookingId: 'TEST_MODE_SKIPPED' };
+      }
+    }
+
     const config = await getServiceTitanConfig(options.tenantId);
     
     if (!config || !config.enabled) {

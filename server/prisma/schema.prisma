@@ -325,8 +325,10 @@ model Conversation {
   lastMessageAt DateTime           @default(now())
   needsAttention Boolean           @default(false)
   aiAgentEnabled Boolean           @default(true)
+  isTestConversation Boolean       @default(false)
   serviceTitanBookingId       String?
   serviceTitanBookingCreatedAt DateTime?
+  phoneNumber   String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 

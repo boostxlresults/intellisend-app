@@ -19,6 +19,7 @@ import Login from './pages/Login';
 import Sequences from './pages/Sequences';
 import Templates from './pages/Templates';
 import Billing from './pages/Billing';
+import AITestConsole from './pages/AITestConsole';
 
 function App() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -84,6 +85,7 @@ function App() {
           <NavLink to="/conversations" className={location.pathname.startsWith('/conversations') ? 'active' : ''}>Conversations</NavLink>
           <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''}>Analytics</NavLink>
           <NavLink to="/knowledge-base" className={({ isActive }) => isActive ? 'active' : ''}>Knowledge Base</NavLink>
+          <NavLink to="/ai-test-console" className={({ isActive }) => isActive ? 'active' : ''}>AI Test Console</NavLink>
           <NavLink to="/billing" className={({ isActive }) => isActive ? 'active' : ''}>Billing</NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>Settings</NavLink>
         </nav>
@@ -169,6 +171,7 @@ function App() {
               <Route path="/conversations/:conversationId" element={<ConversationDetail />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/knowledge-base" element={<KnowledgeBase />} />
+              <Route path="/ai-test-console" element={<AITestConsole />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/twilio" element={<TwilioSetup />} />
             </Routes>

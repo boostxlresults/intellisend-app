@@ -814,6 +814,41 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  startAITest: (tenantId: string, data: { customerName?: string; customerPhone?: string; contactId?: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/start`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  sendAITestMessage: (tenantId: string, data: { conversationId: string; message: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/message`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  resetAITest: (tenantId: string, data: { conversationId: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/reset`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getAITestHistory: (tenantId: string, conversationId: string) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/history/${conversationId}`),
+
+  getAITestScenarios: (tenantId: string) =>
+    request<any[]>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/scenarios`),
+
+  runAITestScenario: (tenantId: string, data: { scenarioId: string }) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/run-scenario`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  runAllAITestScenarios: (tenantId: string) =>
+    request<any>(`${API_BASE}/tenants/${tenantId}/ai-agent/test/run-all-scenarios`, {
+      method: 'POST',
+    }),
 };
 
 export interface AIAgentConfig {

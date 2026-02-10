@@ -53,6 +53,8 @@ export async function handleInboundMessage(
       return null;
     }
 
+    const isTestMode = (conversation as any).isTestConversation === true;
+
     // Check if AI agent is disabled at contact or conversation level
     if ((contact as any).aiAgentEnabled === false || (conversation as any).aiAgentEnabled === false) {
       console.log(`[AI Agent] Disabled for contact ${contactId} or conversation ${conversationId}`);
@@ -879,7 +881,7 @@ async function processCSRBooking(
       conversationSummary: conversationSummary,
     });
 
-    if (booking?.bookingId) {
+    if (booking?.bookingId && booking.bookingId !== 'TEST_MODE_SKIPPED') {
       await prisma.aIAgentSession.update({
         where: { id: session.id },
         data: { stBookingId: String(booking.bookingId) },
@@ -1049,7 +1051,7 @@ async function handoffToCSR(
   let stBookingCreated = false;
 
   try {
-    await createBookingFromInboundSms({
+    const bookingResult = await createBookingFromInboundSms({
       tenantId: session.tenantId,
       contact: {
         id: contact.id,
@@ -1063,7 +1065,7 @@ async function handoffToCSR(
       lastInboundMessage: `[AI Agent - Needs Human] Reason: ${reason}`,
       conversationSummary: conversationSummary,
     });
-    stBookingCreated = true;
+    stBookingCreated = bookingResult?.success && bookingResult.bookingId !== 'TEST_MODE_SKIPPED';
   } catch (error) {
     console.error('Failed to create handoff booking:', error);
   }
@@ -1073,7 +1075,8 @@ async function handoffToCSR(
     where: { tenantId: session.tenantId },
   });
   
-  if (tenantSettings?.notificationEmail) {
+  const isTestConvo = await prisma.conversation.findUnique({ where: { id: session.conversationId }, select: { isTestConversation: true } });
+  if (tenantSettings?.notificationEmail && !isTestConvo?.isTestConversation) {
     try {
       const messages = await prisma.message.findMany({
         where: { conversationId: session.conversationId },
