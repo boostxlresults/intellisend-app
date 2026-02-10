@@ -151,6 +151,7 @@ model Contact {
   lastContactedAt  DateTime?
   lastRepliedAt    DateTime?
   aiAgentEnabled   Boolean       @default(true)
+  stLastCheckedAt  DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
