@@ -18,6 +18,9 @@ interface SyncResult {
 export async function syncServiceTitanContacts(tenantId: string): Promise<SyncResult> {
   console.log(`[ServiceTitan Sync] Starting contact sync for tenant ${tenantId}`);
   
+  const RECHECK_DAYS = 30;
+  const recheckCutoff = new Date(Date.now() - RECHECK_DAYS * 24 * 60 * 60 * 1000);
+  
   const config = await prisma.serviceTitanConfig.findUnique({
     where: { tenantId },
   });
@@ -49,7 +52,13 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
   }
 
   const contacts = await prisma.contact.findMany({
-    where: { tenantId },
+    where: {
+      tenantId,
+      OR: [
+        { stLastCheckedAt: null },
+        { stLastCheckedAt: { lt: recheckCutoff } },
+      ],
+    },
     select: {
       id: true,
       phone: true,
@@ -60,15 +69,34 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
       city: true,
       state: true,
       zip: true,
+      stLastCheckedAt: true,
       tags: {
         select: { tagId: true },
       },
     },
   });
 
-  console.log(`[ServiceTitan Sync] Found ${contacts.length} contacts to check`);
+  const alreadyTaggedCount = await prisma.contact.count({
+    where: {
+      tenantId,
+      tags: { some: { tagId: stTag.id } },
+    },
+  });
 
-  let matchedContacts = 0;
+  console.log(`[ServiceTitan Sync] ${contacts.length} contacts need checking (${alreadyTaggedCount} already tagged, skipping recently-checked within ${RECHECK_DAYS} days)`);
+
+  if (contacts.length === 0) {
+    console.log(`[ServiceTitan Sync] No contacts need checking — all were checked within the last ${RECHECK_DAYS} days`);
+    return {
+      success: true,
+      totalContacts: 0,
+      matchedContacts: alreadyTaggedCount,
+      newlyTagged: 0,
+      errors: 0,
+    };
+  }
+
+  let matchedContacts = alreadyTaggedCount;
   let newlyTagged = 0;
   let errors = 0;
   let matchedByPhone = 0;
@@ -81,13 +109,16 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
       
       if (alreadyTagged) {
         matchedContacts++;
+        await prisma.contact.update({
+          where: { id: contact.id },
+          data: { stLastCheckedAt: new Date() },
+        });
         continue;
       }
 
       let found = false;
       let matchType = '';
 
-      // 1. Try phone match first (most reliable)
       if (contact.phone) {
         const phoneResult = await searchServiceTitanCustomer(tenantId, contact.phone);
         if (phoneResult.found && phoneResult.customers.length > 0) {
@@ -97,7 +128,6 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
         }
       }
 
-      // 2. Try address match if phone didn't match
       if (!found && contact.address) {
         const fullAddress = [contact.address, contact.city, contact.state, contact.zip]
           .filter(Boolean).join(', ');
@@ -111,7 +141,6 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
         }
       }
 
-      // 3. Try name match as last resort
       if (!found && contact.firstName && contact.lastName) {
         const fullName = `${contact.firstName} ${contact.lastName}`;
         const nameResult = await searchByName(tenantId, fullName);
@@ -121,6 +150,11 @@ export async function syncServiceTitanContacts(tenantId: string): Promise<SyncRe
           matchedByName++;
         }
       }
+      
+      await prisma.contact.update({
+        where: { id: contact.id },
+        data: { stLastCheckedAt: new Date() },
+      });
       
       if (found) {
         matchedContacts++;
@@ -208,6 +242,10 @@ export async function syncSingleContact(tenantId: string, contactId: string): Pr
 
   const alreadyTagged = contact.tags.some(t => t.tagId === stTag!.id);
   if (alreadyTagged) {
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: { stLastCheckedAt: new Date() },
+    });
     return true;
   }
 
@@ -243,6 +281,11 @@ export async function syncSingleContact(tenantId: string, contactId: string): Pr
       }
     }
     
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: { stLastCheckedAt: new Date() },
+    });
+
     if (found) {
       try {
         await prisma.contactTag.create({

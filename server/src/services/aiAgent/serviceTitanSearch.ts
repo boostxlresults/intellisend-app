@@ -75,27 +75,25 @@ export async function searchServiceTitanCustomer(
     };
 
     const normalizedPhone = normalizePhone(phone);
-    console.log(`[ServiceTitan] Customer search: Original phone "${phone}" → Normalized "${normalizedPhone}"`);
     
     const customerUrl = `${config.tenantApiBaseUrl}/crm/v2/tenant/${config.serviceTitanTenantId}/customers?phone=${encodeURIComponent(normalizedPhone)}&pageSize=10`;
-    console.log(`[ServiceTitan] Customer search URL: ${customerUrl}`);
     
     const customerResponse = await fetch(customerUrl, { headers });
     
     if (!customerResponse.ok) {
       const errorText = await customerResponse.text();
-      console.error(`[ServiceTitan] Customer search failed: ${customerResponse.status} - ${errorText}`);
+      console.error(`[ServiceTitan] Customer search failed for "${normalizedPhone}": ${customerResponse.status} - ${errorText}`);
       return { found: false, customers: [], locations: [] };
     }
 
     const customerData = await customerResponse.json() as { data?: STCustomer[] };
     const customers: STCustomer[] = customerData.data || [];
-    console.log(`[ServiceTitan] Customer search found ${customers.length} customers for phone "${normalizedPhone}"`);
 
     if (customers.length === 0) {
-      console.log(`[ServiceTitan] No customers found for phone "${normalizedPhone}"`);
       return { found: false, customers: [], locations: [] };
     }
+    
+    console.log(`[ServiceTitan] Found ${customers.length} customer(s) for phone "${normalizedPhone}"`);
 
     const allLocations: STLocation[] = [];
     
