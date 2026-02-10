@@ -289,7 +289,12 @@ router.post('/tenants/:tenantId/offer-contexts', async (req: Request, res: Respo
 router.post('/tenants/:tenantId/ai-agent/test/start', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.params;
-    const { contactId, mockFirstName, mockLastName, mockPhone } = req.body;
+    const { contactId, customerName, customerPhone, mockFirstName, mockLastName, mockPhone } = req.body;
+
+    const nameParts = (customerName || '').trim().split(/\s+/);
+    const resolvedFirstName = mockFirstName || nameParts[0] || 'Test';
+    const resolvedLastName = mockLastName || nameParts.slice(1).join(' ') || 'Customer';
+    const resolvedPhone = mockPhone || customerPhone || `+1555${Date.now().toString().slice(-7)}`;
 
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
@@ -302,9 +307,9 @@ router.post('/tenants/:tenantId/ai-agent/test/start', async (req: Request, res: 
       contact = await prisma.contact.create({
         data: {
           tenantId,
-          firstName: mockFirstName || 'Test',
-          lastName: mockLastName || 'Customer',
-          phone: mockPhone || `+1555${Date.now().toString().slice(-7)}`,
+          firstName: resolvedFirstName,
+          lastName: resolvedLastName,
+          phone: resolvedPhone,
         },
       });
     }

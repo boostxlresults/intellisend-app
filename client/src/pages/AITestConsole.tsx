@@ -89,11 +89,9 @@ export default function AITestConsole() {
     if (!selectedTenant) return;
     setStarting(true);
     try {
-      const nameParts = customerName.trim().split(/\s+/);
       const result = await api.startAITest(selectedTenant.id, {
-        mockFirstName: nameParts[0] || undefined,
-        mockLastName: nameParts.slice(1).join(' ') || undefined,
-        mockPhone: customerPhone || undefined,
+        customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone || undefined,
       });
       setConversationId(result.conversationId);
       setSessionStarted(true);
@@ -183,7 +181,7 @@ export default function AITestConsole() {
     if (!selectedTenant) return;
     setRunningScenario(scenarioId);
     try {
-      const raw = await api.runAITestScenario(selectedTenant.id, { scenarioId: Number(scenarioId) });
+      const raw = await api.runAITestScenario(selectedTenant.id, { scenarioId });
       const mapped = mapScenarioResult(raw, scenarioId);
       setScenarioResults(prev => {
         const filtered = prev.filter(r => r.scenarioId !== String(scenarioId));
