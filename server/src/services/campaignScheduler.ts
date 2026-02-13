@@ -40,6 +40,19 @@ async function processScheduledCampaigns() {
             },
           },
         },
+        campaignSegments: {
+          include: {
+            segment: {
+              include: {
+                members: {
+                  include: {
+                    contact: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         steps: {
           orderBy: { order: 'asc' },
         },
@@ -83,8 +96,20 @@ async function processScheduledCampaigns() {
         continue;
       }
       
-      if (!campaign.segment) {
-        console.warn(`Campaign ${campaign.id} has no segment`);
+      const allSegmentMembers: Array<{ contact: { id: string; phone: string; firstName: string; lastName: string } }> = [];
+      
+      if (campaign.campaignSegments && campaign.campaignSegments.length > 0) {
+        for (const cs of campaign.campaignSegments) {
+          if (cs.segment?.members) {
+            allSegmentMembers.push(...cs.segment.members);
+          }
+        }
+      } else if (campaign.segment) {
+        allSegmentMembers.push(...campaign.segment.members);
+      }
+      
+      if (allSegmentMembers.length === 0) {
+        console.warn(`Campaign ${campaign.id} has no segments or segment members`);
         await prisma.campaign.update({
           where: { id: campaign.id },
           data: { status: 'COMPLETED' },
@@ -116,11 +141,12 @@ async function processScheduledCampaigns() {
       
       const excludedTagIds: string[] = (campaign as any).excludedTagIds || [];
       
+      const allContactIds = allSegmentMembers.map(m => m.contact.id);
       let excludedContactIds = new Set<string>();
       if (excludedTagIds.length > 0) {
         const contactsWithExcludedTags = await prisma.contactTag.findMany({
           where: {
-            contactId: { in: campaign.segment.members.map(m => m.contact.id) },
+            contactId: { in: allContactIds },
             tagId: { in: excludedTagIds },
           },
           select: { contactId: true },
@@ -128,10 +154,8 @@ async function processScheduledCampaigns() {
         excludedContactIds = new Set(contactsWithExcludedTags.map(ct => ct.contactId));
       }
       
-      // Track phones already processed in this batch to prevent duplicate sends
       const processedPhones = new Set<string>();
       
-      // Also check for phone numbers already sent in this campaign (across all contacts)
       const existingPhoneDeliveries = await prisma.message.findMany({
         where: {
           tenantId: campaign.tenantId,
@@ -142,7 +166,6 @@ async function processScheduledCampaigns() {
       });
       existingPhoneDeliveries.forEach(m => processedPhones.add(m.toNumber));
       
-      // Check phones already queued for this campaign
       const queuedPhones = await prisma.outboundMessageQueue.findMany({
         where: {
           tenantId: campaign.tenantId,
@@ -154,7 +177,7 @@ async function processScheduledCampaigns() {
       });
       queuedPhones.forEach(q => processedPhones.add(q.phone));
       
-      for (const member of campaign.segment.members) {
+      for (const member of allSegmentMembers) {
         const contact = member.contact;
         
         try {

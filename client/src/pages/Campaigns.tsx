@@ -29,7 +29,7 @@ export default function Campaigns() {
   const [showComplianceModal, setShowComplianceModal] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [campaignName, setCampaignName] = useState('');
-  const [selectedSegment, setSelectedSegment] = useState('');
+  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [messageBody, setMessageBody] = useState('');
   const [useAi, setUseAi] = useState(false);
@@ -88,7 +88,7 @@ export default function Campaigns() {
     await Promise.all([fetchSegments(), fetchTemplates()]);
     setShowCreateModal(true);
     setCampaignName('');
-    setSelectedSegment('');
+    setSelectedSegments([]);
     setSelectedTemplate('');
     setMessageBody('');
     setUseAi(false);
@@ -129,7 +129,7 @@ export default function Campaigns() {
   };
 
   const handleCreateCampaign = async (sendNow: boolean) => {
-    if (!selectedTenant || !campaignName.trim() || !selectedSegment || !messageBody.trim()) {
+    if (!selectedTenant || !campaignName.trim() || selectedSegments.length === 0 || !messageBody.trim()) {
       alert('Please fill in all required fields');
       return;
     }
@@ -137,7 +137,7 @@ export default function Campaigns() {
       const campaign = await api.createCampaign(selectedTenant.id, {
         name: campaignName,
         type: 'BLAST',
-        segmentId: selectedSegment,
+        segmentIds: selectedSegments,
         steps: [{
           bodyTemplate: improvedMessage || messageBody,
           delayMinutes: 0,
@@ -251,7 +251,11 @@ export default function Campaigns() {
                         <span style={{ color: '#ed8936' }}>Pending</span>
                       )}
                     </td>
-                    <td>{campaign.segment?.name || '-'}</td>
+                    <td>{
+                      (campaign as any).campaignSegments?.length > 0
+                        ? (campaign as any).campaignSegments.map((cs: any) => cs.segment?.name).filter(Boolean).join(', ')
+                        : campaign.segment?.name || '-'
+                    }</td>
                     <td>
                       {campaign.status === 'DRAFT' && (
                         <button
@@ -284,18 +288,44 @@ export default function Campaigns() {
               />
             </div>
             <div className="form-group">
-              <label>Select Segment *</label>
-              <select
-                value={selectedSegment}
-                onChange={(e) => setSelectedSegment(e.target.value)}
-              >
-                <option value="">Choose a segment</option>
-                {segments.map(segment => (
-                  <option key={segment.id} value={segment.id}>
-                    {segment.name} ({segment._count?.members || 0} contacts)
-                  </option>
-                ))}
-              </select>
+              <label>Select Segments * {selectedSegments.length > 0 && <span style={{ fontWeight: 'normal', color: '#718096' }}>({selectedSegments.length} selected)</span>}</label>
+              <div style={{ 
+                border: '1px solid #cbd5e0', 
+                borderRadius: '6px', 
+                maxHeight: '160px', 
+                overflowY: 'auto', 
+                padding: '8px' 
+              }}>
+                {segments.length === 0 ? (
+                  <p style={{ color: '#718096', margin: 0, fontSize: '14px' }}>No segments available. Create segments first.</p>
+                ) : (
+                  segments.map(segment => (
+                    <label key={segment.id} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px', 
+                      padding: '6px 4px',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      backgroundColor: selectedSegments.includes(segment.id) ? '#ebf8ff' : 'transparent',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSegments.includes(segment.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSegments(prev => [...prev, segment.id]);
+                          } else {
+                            setSelectedSegments(prev => prev.filter(id => id !== segment.id));
+                          }
+                        }}
+                      />
+                      <span>{segment.name}</span>
+                      <span style={{ color: '#718096', fontSize: '12px' }}>({segment._count?.members || 0} contacts)</span>
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
             <div className="form-group">
               <label>Use Template (Optional)</label>

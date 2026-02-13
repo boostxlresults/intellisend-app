@@ -12,6 +12,9 @@ router.get('/:tenantId/campaigns', async (req, res) => {
       where: { tenantId },
       include: {
         segment: true,
+        campaignSegments: {
+          include: { segment: true },
+        },
         steps: {
           orderBy: { order: 'asc' },
         },
@@ -29,11 +32,15 @@ router.get('/:tenantId/campaigns', async (req, res) => {
 router.post('/:tenantId/campaigns', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { name, description, type, segmentId, steps, excludedTagIds } = req.body;
+    const { name, description, type, segmentId, segmentIds, steps, excludedTagIds } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
     }
+    
+    const resolvedSegmentIds: string[] = segmentIds && segmentIds.length > 0
+      ? segmentIds
+      : segmentId ? [segmentId] : [];
     
     const campaign = await prisma.campaign.create({
       data: {
@@ -41,8 +48,13 @@ router.post('/:tenantId/campaigns', async (req, res) => {
         name,
         description,
         type: type || 'BLAST',
-        segmentId,
+        segmentId: resolvedSegmentIds[0] || null,
         excludedTagIds: excludedTagIds || [],
+        campaignSegments: resolvedSegmentIds.length > 0 ? {
+          create: resolvedSegmentIds.map((sId: string) => ({
+            segmentId: sId,
+          })),
+        } : undefined,
         steps: steps ? {
           create: steps.map((step: any, index: number) => ({
             order: index + 1,
@@ -56,6 +68,9 @@ router.post('/:tenantId/campaigns', async (req, res) => {
       },
       include: {
         segment: true,
+        campaignSegments: {
+          include: { segment: true },
+        },
         steps: {
           orderBy: { order: 'asc' },
         },
@@ -80,6 +95,17 @@ router.get('/:tenantId/campaigns/:campaignId', async (req, res) => {
           include: {
             members: {
               include: { contact: true },
+            },
+          },
+        },
+        campaignSegments: {
+          include: {
+            segment: {
+              include: {
+                members: {
+                  include: { contact: true },
+                },
+              },
             },
           },
         },
@@ -135,6 +161,7 @@ router.post('/:tenantId/campaigns/:campaignId/compliance', async (req, res) => {
       },
       include: {
         segment: true,
+        campaignSegments: { include: { segment: true } },
         steps: true,
       },
     });
@@ -177,6 +204,7 @@ router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
       },
       include: {
         segment: true,
+        campaignSegments: { include: { segment: true } },
         steps: true,
       },
     });

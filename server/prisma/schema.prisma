@@ -235,9 +235,10 @@ model Segment {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members   SegmentMember[]
-  campaigns Campaign[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members          SegmentMember[]
+  campaigns        Campaign[]
+  campaignSegments CampaignSegment[]
 }
 
 model SegmentMember {
@@ -288,12 +289,24 @@ model Campaign {
   complianceContentReviewed Boolean @default(false)
   complianceNotes         String?
 
-  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  segment       Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
-  steps         CampaignStep[]
-  messages      Message[]
-  variants      CampaignVariant[]
-  offerContexts OfferContext[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment          Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  campaignSegments CampaignSegment[]
+  steps            CampaignStep[]
+  messages         Message[]
+  variants         CampaignVariant[]
+  offerContexts    OfferContext[]
+}
+
+model CampaignSegment {
+  id         String @id @default(uuid())
+  campaignId String
+  segmentId  String
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  segment  Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, segmentId])
 }
 
 model CampaignStep {
