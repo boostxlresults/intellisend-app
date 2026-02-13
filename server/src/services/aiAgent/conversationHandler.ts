@@ -349,8 +349,16 @@ export async function handleInboundMessage(
         newState: 'CONVERSING',
       };
   }
-  } catch (error) {
-    console.error('[AI Agent] Critical error in handleInboundMessage:', error);
+  } catch (error: any) {
+    console.error('[AI Agent] Critical error in handleInboundMessage:', {
+      message: error?.message,
+      code: error?.code,
+      meta: error?.meta,
+      stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+      conversationId,
+      tenantId,
+      contactId,
+    });
     return {
       shouldRespond: true,
       responseText: "Thanks for your message! One of our team members will reach out to you shortly.",
