@@ -1,4 +1,5 @@
 import { prisma } from '../index';
+import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 
 async function processSequenceSteps() {
   const now = new Date();
@@ -52,20 +53,22 @@ async function processSequenceSteps() {
         continue;
       }
       
-      const settings = await prisma.tenantSettings.findUnique({
-        where: { tenantId: enrollmentStep.enrollment.sequence.tenantId },
-        include: { defaultFromNumber: true },
-      });
+      const tenantId = enrollmentStep.enrollment.sequence.tenantId;
+      const sendContext = await getTenantSendContext(tenantId);
       
-      const fromNumber = settings?.defaultFromNumber?.phoneNumber;
-      
-      if (!fromNumber) {
+      if (!sendContext) {
         await prisma.sequenceEnrollmentStep.update({
           where: { id: enrollmentStep.id },
           data: { skipped: true, skipReason: 'No from number configured' },
         });
         continue;
       }
+
+      if (isWithinQuietHours(now, sendContext.timezone, sendContext.quietHoursStart, sendContext.quietHoursEnd)) {
+        continue;
+      }
+      
+      const fromNumber = sendContext.fromNumber;
       
       let body = enrollmentStep.step.bodyTemplate;
       body = body.replace(/\{\{firstName\}\}/g, contact.firstName || '');

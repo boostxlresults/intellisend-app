@@ -1,6 +1,7 @@
 import { prisma } from '../index';
 import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
 import { recordUsage } from '../routes/billing';
+import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 
 const DISPATCHER_INTERVAL_MS = 5000;
 const MAX_BATCH_SIZE = 50;
@@ -9,6 +10,39 @@ interface SendSettings {
   sendRatePerMinute: number;
   sendJitterMinMs: number;
   sendJitterMaxMs: number;
+}
+
+function getQuietHoursEndTime(timezone: string, quietHoursEndMinutes: number): Date {
+  const now = new Date();
+  const endHour = Math.floor(quietHoursEndMinutes / 60);
+  const endMinute = quietHoursEndMinutes % 60;
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(now);
+    const localHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    const localMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    const localMinutes = localHour * 60 + localMinute;
+
+    let minutesUntilEnd: number;
+    if (localMinutes < quietHoursEndMinutes) {
+      minutesUntilEnd = quietHoursEndMinutes - localMinutes;
+    } else {
+      minutesUntilEnd = (24 * 60 - localMinutes) + quietHoursEndMinutes;
+    }
+
+    return new Date(now.getTime() + minutesUntilEnd * 60 * 1000 + 60000);
+  } catch {
+    return new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  }
 }
 
 function getRandomJitter(minMs: number, maxMs: number): number {
@@ -65,14 +99,71 @@ async function processOutboundQueue() {
       const sendSettings = await getTenantSendSettings(tenantId);
       const delayBetweenMessages = 60000 / sendSettings.sendRatePerMinute;
 
+      const sendContext = await getTenantSendContext(tenantId);
+      if (sendContext && isWithinQuietHours(new Date(), sendContext.timezone, sendContext.quietHoursStart, sendContext.quietHoursEnd)) {
+        const deferTime = getQuietHoursEndTime(sendContext.timezone, sendContext.quietHoursEnd);
+        const messageIds = messages.map(m => m.id);
+        await prisma.outboundMessageQueue.updateMany({
+          where: { id: { in: messageIds }, status: 'PENDING' },
+          data: { processAfter: deferTime },
+        });
+        for (const msg of messages) {
+          await prisma.messageEvent.create({
+            data: {
+              tenantId,
+              contactId: msg.contactId,
+              phone: msg.phone,
+              eventType: 'QUIET_HOURS_BLOCKED',
+              campaignId: msg.campaignId,
+            },
+          });
+        }
+        console.log(`Queue dispatcher: Quiet hours active for tenant ${tenantId}, deferred ${messages.length} messages until ${deferTime.toISOString()}`);
+        continue;
+      }
+
       for (let i = 0; i < messages.length; i++) {
         const queueItem = messages[i];
 
         try {
+          if (sendContext && isWithinQuietHours(new Date(), sendContext.timezone, sendContext.quietHoursStart, sendContext.quietHoursEnd)) {
+            const deferTime = getQuietHoursEndTime(sendContext.timezone, sendContext.quietHoursEnd);
+            const remainingIds = messages.slice(i).map(m => m.id);
+            await prisma.outboundMessageQueue.updateMany({
+              where: { id: { in: remainingIds }, status: 'PENDING' },
+              data: { processAfter: deferTime },
+            });
+            console.log(`Queue dispatcher: Quiet hours started mid-batch for tenant ${tenantId}, deferred ${remainingIds.length} remaining messages until ${deferTime.toISOString()}`);
+            break;
+          }
+
           await prisma.outboundMessageQueue.update({
             where: { id: queueItem.id },
             data: { status: 'PROCESSING', attempts: queueItem.attempts + 1 },
           });
+
+          if (queueItem.campaignId && queueItem.campaignStepId) {
+            const alreadySentForPhone = await prisma.message.findFirst({
+              where: {
+                tenantId,
+                campaignId: queueItem.campaignId,
+                campaignStepId: queueItem.campaignStepId,
+                toNumber: queueItem.phone,
+              },
+            });
+            if (alreadySentForPhone) {
+              await prisma.outboundMessageQueue.update({
+                where: { id: queueItem.id },
+                data: {
+                  status: 'SUPPRESSED',
+                  processedAt: new Date(),
+                  errorMessage: 'Duplicate - already sent to this phone for this campaign step',
+                },
+              });
+              console.log(`Queue: Skipped duplicate send to ${queueItem.phone} for campaign ${queueItem.campaignId}`);
+              continue;
+            }
+          }
 
           const isSuppressed = await checkSuppression(tenantId, queueItem.phone);
 
@@ -283,7 +374,39 @@ export async function queueCampaignMessages(
   const sendSettings = await getTenantSendSettings(tenantId);
   const delayBetweenMessages = 60000 / sendSettings.sendRatePerMinute;
 
-  const queueItems = messages.map((msg, index) => {
+  const alreadyQueued = await prisma.outboundMessageQueue.findMany({
+    where: {
+      tenantId,
+      campaignId,
+      campaignStepId,
+      status: { in: ['PENDING', 'PROCESSING', 'SENT'] },
+    },
+    select: { phone: true },
+  });
+  const alreadyQueuedPhones = new Set(alreadyQueued.map(q => q.phone));
+
+  const alreadySent = await prisma.message.findMany({
+    where: {
+      tenantId,
+      campaignId,
+      campaignStepId,
+    },
+    select: { toNumber: true },
+  });
+  alreadySent.forEach(m => alreadyQueuedPhones.add(m.toNumber));
+
+  const deduplicatedMessages = messages.filter(msg => !alreadyQueuedPhones.has(msg.phone));
+
+  if (deduplicatedMessages.length < messages.length) {
+    console.log(`Queue: Filtered ${messages.length - deduplicatedMessages.length} duplicate phone numbers for campaign ${campaignId}`);
+  }
+
+  if (deduplicatedMessages.length === 0) {
+    console.log(`Queue: All messages for campaign ${campaignId} already queued or sent, nothing to add`);
+    return { queued: 0 };
+  }
+
+  const queueItems = deduplicatedMessages.map((msg, index) => {
     const jitter = getRandomJitter(sendSettings.sendJitterMinMs, sendSettings.sendJitterMaxMs);
     const processAfter = new Date(Date.now() + index * delayBetweenMessages + jitter);
 
