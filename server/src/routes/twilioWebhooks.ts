@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
-import { isStopKeyword, isOptInKeyword } from '../utils/smsKeywords';
+import { isStopKeyword, isOptInKeyword, isNegativeSentiment } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
 import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
@@ -74,7 +74,10 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
     const tenantId = tenantNumber.tenantId;
     const tenant = tenantNumber.tenant;
     
-    if (isStopKeyword(Body)) {
+    if (isStopKeyword(Body) || isNegativeSentiment(Body)) {
+      const isNegative = isNegativeSentiment(Body) && !isStopKeyword(Body);
+      const reason = isNegative ? 'NEGATIVE_SENTIMENT' : 'STOP';
+
       await prisma.suppression.upsert({
         where: {
           tenantId_phone: {
@@ -85,16 +88,16 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         create: {
           tenantId,
           phone: From,
-          reason: 'STOP',
+          reason,
         },
         update: {
-          reason: 'STOP',
+          reason,
         },
       });
       
-      console.log(`Contact ${From} opted out for tenant ${tenantId} (keyword: ${Body?.trim().toUpperCase()})`);
+      console.log(`Contact ${From} opted out for tenant ${tenantId} (${reason}: "${Body?.trim()}")`);
       
-      const confirmationMessage = `You're unsubscribed from ${tenant.publicName} SMS. No more messages will be sent. Reply HELP for help.`;
+      const confirmationMessage = `You've been unsubscribed from ${tenant.publicName} messages. You will not receive any further texts. Reply HELP for help.`;
       
       const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>

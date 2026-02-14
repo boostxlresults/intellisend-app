@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { isStopOrNegative } from '../../utils/smsKeywords';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -31,8 +32,6 @@ export interface IntentClassification {
   };
 }
 
-const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
-
 export async function classifyIntent(
   message: string,
   conversationHistory: Array<{ role: 'customer' | 'business'; body: string }>,
@@ -42,12 +41,11 @@ export async function classifyIntent(
     price?: string;
   }
 ): Promise<IntentClassification> {
-  const upperMessage = message.toUpperCase().trim();
-  if (STOP_WORDS.some(word => upperMessage === word)) {
+  if (isStopOrNegative(message)) {
     return {
       intent: 'OPT_OUT',
       confidence: 1.0,
-      reasoning: 'Customer used explicit opt-out keyword',
+      reasoning: 'Customer used opt-out keyword or expressed strong negative sentiment',
       extractedData: {},
     };
   }
@@ -84,7 +82,7 @@ Classify the customer's intent into ONE of these categories:
 - RESCHEDULE: Customer wants to change an existing appointment
 - NOT_NOW: Customer wants to delay (e.g., "not right now", "maybe next month", "busy this week")
 - NOT_INTERESTED: Clear rejection (e.g., "no thanks", "not interested", "don't need it")
-- OPT_OUT: Wants to stop receiving messages
+- OPT_OUT: Wants to stop receiving messages, OR expresses strong negative sentiment like profanity, threats, hostility, demands to stop texting, or anything indicating they clearly do not want to hear from you (e.g., "fuck off", "stop texting me", "leave me alone", "this is spam", "I'm reporting you")
 - WRONG_NUMBER: Claims wrong number or wrong person
 - CALL_ME: Customer prefers a real person call them (e.g., "can someone call me", "have someone give me a call", "I'd rather talk to someone")
 - CONFIRM_YES: Customer confirming their identity or address (e.g., "yes that's me", "correct", "yep that's right", "that's my address")
