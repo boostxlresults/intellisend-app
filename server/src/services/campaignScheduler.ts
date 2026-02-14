@@ -4,6 +4,7 @@ import { generateImprovedMessage } from '../ai/aiEngine';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 import { queueCampaignMessages } from './queueDispatcher';
 import { normalizePhone } from '../utils/phoneNormalize';
+import { sendDuplicateAlertEmail } from './emailNotifications';
 
 const SCHEDULER_INTERVAL_MS = 60000;
 
@@ -141,11 +142,29 @@ async function processScheduledCampaigns() {
       const maxAllowedMessages = uniquePhoneCount;
       
       if (totalAlreadyProcessed >= maxAllowedMessages) {
-        console.error(`SAFETY LIMIT: Campaign ${campaign.id} already has ${totalAlreadyProcessed} messages (sent+queued) for ${uniquePhoneCount} unique phones. Max allowed: ${maxAllowedMessages}. Marking COMPLETED.`);
+        console.error(`SAFETY LIMIT: Campaign ${campaign.id} already has ${totalAlreadyProcessed} messages (sent+queued) for ${uniquePhoneCount} unique phones. Max allowed: ${maxAllowedMessages}. AUTO-PAUSING.`);
         await prisma.campaign.update({
           where: { id: campaign.id },
-          data: { status: 'COMPLETED' },
+          data: { status: 'PAUSED' },
         });
+
+        const tenantSettings = await prisma.tenantSettings.findUnique({
+          where: { tenantId: campaign.tenantId },
+          select: { notificationEmail: true },
+        });
+        if (tenantSettings?.notificationEmail) {
+          sendDuplicateAlertEmail({
+            toEmail: tenantSettings.notificationEmail,
+            tenantName: campaign.tenant?.name || 'Unknown',
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            duplicateCount: totalAlreadyProcessed - uniquePhoneCount,
+            totalQueued: totalAlreadyProcessed,
+            action: 'AUTO_PAUSED',
+            source: 'scheduler',
+          }).catch(err => console.error('[Email] Failed to send duplicate alert:', err));
+        }
+
         continue;
       }
       

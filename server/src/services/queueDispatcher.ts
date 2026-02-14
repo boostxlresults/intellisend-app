@@ -2,9 +2,14 @@ import { prisma } from '../index';
 import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
 import { recordUsage } from '../routes/billing';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
+import { sendDuplicateAlertEmail } from './emailNotifications';
 
 const DISPATCHER_INTERVAL_MS = 5000;
 const MAX_BATCH_SIZE = 50;
+const DUPLICATE_ALERT_THRESHOLD = 3;
+
+const campaignDuplicateCounts = new Map<string, number>();
+const alertedCampaigns = new Set<string>();
 
 interface SendSettings {
   sendRatePerMinute: number;
@@ -69,6 +74,11 @@ export function startQueueDispatcher() {
   setInterval(async () => {
     await processOutboundQueue();
   }, DISPATCHER_INTERVAL_MS);
+
+  setInterval(() => {
+    campaignDuplicateCounts.clear();
+    alertedCampaigns.clear();
+  }, 30 * 60 * 1000);
 
   processOutboundQueue();
 }
@@ -187,7 +197,63 @@ async function processOutboundQueue() {
                   errorMessage: 'Duplicate - already sent to this phone for this campaign step',
                 },
               });
-              console.log(`Queue: Skipped duplicate send to ${queueItem.phone} for campaign ${queueItem.campaignId}`);
+
+              const campaignKey = queueItem.campaignId;
+              const dupCount = (campaignDuplicateCounts.get(campaignKey) || 0) + 1;
+              campaignDuplicateCounts.set(campaignKey, dupCount);
+              console.warn(`DUPLICATE DETECTED: ${queueItem.phone} for campaign ${campaignKey} (count: ${dupCount}/${DUPLICATE_ALERT_THRESHOLD})`);
+
+              if (dupCount >= DUPLICATE_ALERT_THRESHOLD && !alertedCampaigns.has(campaignKey)) {
+                alertedCampaigns.add(campaignKey);
+                console.error(`DUPLICATE ANOMALY: Campaign ${campaignKey} hit ${dupCount} duplicates - AUTO-PAUSING`);
+
+                await prisma.campaign.update({
+                  where: { id: campaignKey },
+                  data: { status: 'PAUSED' },
+                });
+
+                const remainingIds = messages.slice(i + 1)
+                  .filter(m => m.campaignId === campaignKey)
+                  .map(m => m.id);
+                if (remainingIds.length > 0) {
+                  await prisma.outboundMessageQueue.updateMany({
+                    where: { id: { in: remainingIds }, status: 'PENDING' },
+                    data: {
+                      status: 'FAILED',
+                      processedAt: new Date(),
+                      errorMessage: 'Campaign auto-paused due to duplicate anomaly',
+                    },
+                  });
+                }
+
+                const campaignInfo = await prisma.campaign.findUnique({
+                  where: { id: campaignKey },
+                  select: { name: true, tenantId: true },
+                });
+                const tenantInfo = campaignInfo ? await prisma.tenant.findUnique({
+                  where: { id: campaignInfo.tenantId },
+                  select: { name: true },
+                }) : null;
+                const tenantSettings = campaignInfo ? await prisma.tenantSettings.findUnique({
+                  where: { tenantId: campaignInfo.tenantId },
+                  select: { notificationEmail: true },
+                }) : null;
+                if (tenantSettings?.notificationEmail) {
+                  sendDuplicateAlertEmail({
+                    toEmail: tenantSettings.notificationEmail,
+                    tenantName: tenantInfo?.name || 'Unknown',
+                    campaignId: campaignKey,
+                    campaignName: campaignInfo?.name || 'Unknown',
+                    duplicateCount: dupCount,
+                    totalQueued: messages.length,
+                    action: 'AUTO_PAUSED',
+                    source: 'dispatcher',
+                  }).catch(err => console.error('[Email] Failed to send duplicate alert:', err));
+                }
+
+                break;
+              }
+
               continue;
             }
           }
@@ -424,8 +490,45 @@ export async function queueCampaignMessages(
 
   const deduplicatedMessages = messages.filter(msg => !alreadyQueuedPhones.has(msg.phone));
 
-  if (deduplicatedMessages.length < messages.length) {
-    console.log(`Queue: Filtered ${messages.length - deduplicatedMessages.length} duplicate phone numbers for campaign ${campaignId}`);
+  const duplicateCount = messages.length - deduplicatedMessages.length;
+  if (duplicateCount > 0) {
+    console.warn(`DUPLICATE WARNING: Filtered ${duplicateCount} duplicate phone numbers at queue time for campaign ${campaignId}`);
+    
+    if (duplicateCount >= DUPLICATE_ALERT_THRESHOLD) {
+      console.error(`DUPLICATE ANOMALY at queue time: Campaign ${campaignId} tried to queue ${duplicateCount} duplicates - AUTO-PAUSING`);
+      
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: 'PAUSED' },
+      });
+
+      const campaignInfo = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { name: true },
+      });
+      const tenantInfo = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { name: true },
+      });
+      const tenantSettings = await prisma.tenantSettings.findUnique({
+        where: { tenantId },
+        select: { notificationEmail: true },
+      });
+      if (tenantSettings?.notificationEmail) {
+        sendDuplicateAlertEmail({
+          toEmail: tenantSettings.notificationEmail,
+          tenantName: tenantInfo?.name || 'Unknown',
+          campaignId,
+          campaignName: campaignInfo?.name || 'Unknown',
+          duplicateCount,
+          totalQueued: messages.length,
+          action: 'AUTO_PAUSED',
+          source: 'dispatcher',
+        }).catch(err => console.error('[Email] Failed to send duplicate alert:', err));
+      }
+
+      return { queued: 0 };
+    }
   }
 
   if (deduplicatedMessages.length === 0) {
