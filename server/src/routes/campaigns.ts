@@ -199,9 +199,7 @@ router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
     }
 
     if (campaign.status === 'PAUSED') {
-      return res.status(400).json({ 
-        error: 'Campaign is paused. Please contact support to resume.',
-      });
+      console.log(`Campaign ${campaignId} is being resumed from PAUSED state by user action`);
     }
 
     if (!campaign.complianceConsentVerified || 
