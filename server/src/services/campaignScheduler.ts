@@ -76,6 +76,12 @@ async function processScheduledCampaigns() {
         continue;
       }
       
+      const freshCampaign = await prisma.campaign.findUnique({ where: { id: campaign.id }, select: { status: true } });
+      if (freshCampaign?.status === 'PAUSED' || freshCampaign?.status === 'COMPLETED') {
+        console.log(`Campaign ${campaign.id} was paused/completed after claim, skipping`);
+        continue;
+      }
+      
       const sendContext = await getTenantSendContext(campaign.tenantId);
       
       if (!sendContext) {
@@ -110,6 +116,31 @@ async function processScheduledCampaigns() {
       
       if (allSegmentMembers.length === 0) {
         console.warn(`Campaign ${campaign.id} has no segments or segment members`);
+        await prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { status: 'COMPLETED' },
+        });
+        continue;
+      }
+      
+      const existingSentCount = await prisma.message.count({
+        where: {
+          tenantId: campaign.tenantId,
+          campaignId: campaign.id,
+        },
+      });
+      const existingQueuedCount = await prisma.outboundMessageQueue.count({
+        where: {
+          tenantId: campaign.tenantId,
+          campaignId: campaign.id,
+        },
+      });
+      const totalAlreadyProcessed = existingSentCount + existingQueuedCount;
+      const uniquePhoneCount = new Set(allSegmentMembers.map(m => m.contact.phone)).size;
+      const maxAllowedMessages = uniquePhoneCount;
+      
+      if (totalAlreadyProcessed >= maxAllowedMessages) {
+        console.error(`SAFETY LIMIT: Campaign ${campaign.id} already has ${totalAlreadyProcessed} messages (sent+queued) for ${uniquePhoneCount} unique phones. Max allowed: ${maxAllowedMessages}. Marking COMPLETED.`);
         await prisma.campaign.update({
           where: { id: campaign.id },
           data: { status: 'COMPLETED' },
@@ -171,7 +202,6 @@ async function processScheduledCampaigns() {
           tenantId: campaign.tenantId,
           campaignId: campaign.id,
           campaignStepId: firstStep.id,
-          status: { in: ['PENDING', 'PROCESSING'] },
         },
         select: { phone: true },
       });

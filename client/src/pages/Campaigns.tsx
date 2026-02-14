@@ -256,13 +256,34 @@ export default function Campaigns() {
                         ? (campaign as any).campaignSegments.map((cs: any) => cs.segment?.name).filter(Boolean).join(', ')
                         : campaign.segment?.name || '-'
                     }</td>
-                    <td>
+                    <td style={{ display: 'flex', gap: '4px' }}>
                       {campaign.status === 'DRAFT' && (
                         <button
                           className="btn btn-small btn-secondary"
                           onClick={() => openComplianceReview(campaign)}
                         >
                           {complianceComplete ? 'Schedule' : 'Review & Send'}
+                        </button>
+                      )}
+                      {(campaign.status === 'SCHEDULED' || campaign.status === 'RUNNING') && (
+                        <button
+                          className="btn btn-small"
+                          style={{ backgroundColor: '#e53e3e', color: 'white', border: 'none' }}
+                          onClick={async () => {
+                            if (!selectedTenant) return;
+                            if (!confirm('Are you sure you want to PAUSE this campaign? All pending messages will be cancelled.')) return;
+                            try {
+                              const res = await fetch(`/api/tenants/${selectedTenant.id}/campaigns/${campaign.id}/pause`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                              const data = await res.json();
+                              alert(data.message || 'Campaign paused');
+                              const updated = await api.getCampaigns(selectedTenant.id);
+                              setCampaigns(updated);
+                            } catch (err) {
+                              alert('Failed to pause campaign');
+                            }
+                          }}
+                        >
+                          STOP
                         </button>
                       )}
                     </td>

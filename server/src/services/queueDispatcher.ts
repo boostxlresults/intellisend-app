@@ -77,6 +77,12 @@ async function processOutboundQueue() {
   try {
     const now = new Date();
 
+    const pausedCampaigns = await prisma.campaign.findMany({
+      where: { status: 'PAUSED' },
+      select: { id: true },
+    });
+    const pausedCampaignIds = new Set(pausedCampaigns.map(c => c.id));
+
     const pendingMessages = await prisma.outboundMessageQueue.findMany({
       where: {
         status: 'PENDING',
@@ -86,10 +92,31 @@ async function processOutboundQueue() {
       take: MAX_BATCH_SIZE,
     });
 
-    if (pendingMessages.length === 0) return;
+    const filteredMessages = pendingMessages.filter(msg => {
+      if (msg.campaignId && pausedCampaignIds.has(msg.campaignId)) {
+        return false;
+      }
+      return true;
+    });
 
-    const tenantGroups = new Map<string, typeof pendingMessages>();
-    for (const msg of pendingMessages) {
+    if (filteredMessages.length < pendingMessages.length) {
+      const pausedMsgIds = pendingMessages
+        .filter(msg => msg.campaignId && pausedCampaignIds.has(msg.campaignId))
+        .map(msg => msg.id);
+      await prisma.outboundMessageQueue.updateMany({
+        where: { id: { in: pausedMsgIds } },
+        data: {
+          status: 'FAILED',
+          processedAt: new Date(),
+          errorMessage: 'Campaign paused - message cancelled',
+        },
+      });
+    }
+
+    if (filteredMessages.length === 0) return;
+
+    const tenantGroups = new Map<string, typeof filteredMessages>();
+    for (const msg of filteredMessages) {
       const group = tenantGroups.get(msg.tenantId) || [];
       group.push(msg);
       tenantGroups.set(msg.tenantId, group);

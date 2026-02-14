@@ -186,6 +186,24 @@ router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
+    if (campaign.status === 'RUNNING' || campaign.status === 'SCHEDULED') {
+      return res.status(400).json({ 
+        error: 'Campaign is already scheduled or running. Cannot re-schedule.',
+      });
+    }
+
+    if (campaign.status === 'COMPLETED') {
+      return res.status(400).json({ 
+        error: 'Campaign has already been sent. Create a new campaign to send again.',
+      });
+    }
+
+    if (campaign.status === 'PAUSED') {
+      return res.status(400).json({ 
+        error: 'Campaign is paused. Please contact support to resume.',
+      });
+    }
+
     if (!campaign.complianceConsentVerified || 
         !campaign.complianceOptOutIncluded || 
         !campaign.complianceQuietHoursOk || 
@@ -212,6 +230,47 @@ router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Error scheduling campaign:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:tenantId/campaigns/:campaignId/pause', async (req, res) => {
+  try {
+    const { tenantId, campaignId } = req.params;
+    
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const cancelledQueue = await prisma.outboundMessageQueue.updateMany({
+      where: {
+        campaignId,
+        tenantId,
+        status: { in: ['PENDING', 'PROCESSING'] },
+      },
+      data: {
+        status: 'FAILED',
+        processedAt: new Date(),
+        errorMessage: 'Campaign paused by user - messages cancelled',
+      },
+    });
+
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: { status: 'PAUSED' },
+    });
+    
+    res.json({ 
+      success: true, 
+      cancelledMessages: cancelledQueue.count,
+      message: `Campaign paused. ${cancelledQueue.count} pending messages were cancelled.`,
+    });
+  } catch (error: any) {
+    console.error('Error pausing campaign:', error);
     res.status(500).json({ error: error.message });
   }
 });
