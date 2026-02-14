@@ -767,4 +767,179 @@ router.post('/:tenantId/contacts/merge', async (req, res) => {
   }
 });
 
+router.post('/:tenantId/contacts/normalize-and-merge', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    const contacts = await prisma.contact.findMany({
+      where: { tenantId },
+      select: { id: true, phone: true, firstName: true, lastName: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    
+    let phonesNormalized = 0;
+    let contactsMerged = 0;
+    let totalDuplicateGroups = 0;
+    const details: string[] = [];
+    
+    const phoneGroups = new Map<string, typeof contacts>();
+    
+    for (const contact of contacts) {
+      const normalized = normalizePhone(contact.phone);
+      if (!normalized) continue;
+      
+      if (contact.phone !== normalized) {
+        phonesNormalized++;
+      }
+      
+      const group = phoneGroups.get(normalized) || [];
+      group.push({ ...contact, phone: normalized });
+      phoneGroups.set(normalized, group);
+    }
+    
+    for (const [normalizedPhone, group] of phoneGroups) {
+      if (group.length <= 1) {
+        const contact = group[0];
+        if (contact.phone !== normalizedPhone) {
+          await prisma.contact.update({
+            where: { id: contact.id },
+            data: { phone: normalizedPhone },
+          });
+        }
+        continue;
+      }
+      
+      totalDuplicateGroups++;
+      const keepContact = group[0];
+      const mergeContacts = group.slice(1);
+      const mergeIds = mergeContacts.map(c => c.id);
+      
+      details.push(`Merged ${group.length} contacts for ${normalizedPhone}: kept "${keepContact.firstName} ${keepContact.lastName}", merged ${mergeContacts.map(c => `"${c.firstName} ${c.lastName}"`).join(', ')}`);
+      
+      await prisma.$transaction(async (tx) => {
+        await tx.contact.update({
+          where: { id: keepContact.id },
+          data: { phone: normalizedPhone },
+        });
+        
+        const keepTags = await tx.contactTag.findMany({
+          where: { contactId: keepContact.id },
+          select: { tagId: true },
+        });
+        const existingTagIds = new Set(keepTags.map(t => t.tagId));
+        
+        const mergeTags = await tx.contactTag.findMany({
+          where: { contactId: { in: mergeIds } },
+          select: { tagId: true },
+        });
+        
+        const newTagIds = [...new Set(mergeTags.map(t => t.tagId))].filter(id => !existingTagIds.has(id));
+        if (newTagIds.length > 0) {
+          await tx.contactTag.createMany({
+            data: newTagIds.map(tagId => ({ contactId: keepContact.id, tagId })),
+            skipDuplicates: true,
+          });
+        }
+        
+        await tx.contactTag.deleteMany({
+          where: { contactId: { in: mergeIds } },
+        });
+        
+        await tx.contactNote.updateMany({
+          where: { contactId: { in: mergeIds } },
+          data: { contactId: keepContact.id },
+        });
+        
+        await tx.conversation.updateMany({
+          where: { contactId: { in: mergeIds }, tenantId },
+          data: { contactId: keepContact.id },
+        });
+        
+        await tx.message.updateMany({
+          where: { contactId: { in: mergeIds }, tenantId },
+          data: { contactId: keepContact.id },
+        });
+        
+        await tx.outboundMessageQueue.updateMany({
+          where: { contactId: { in: mergeIds } },
+          data: { contactId: keepContact.id },
+        });
+        
+        const keepSegments = await tx.segmentMember.findMany({
+          where: { contactId: keepContact.id },
+          select: { segmentId: true },
+        });
+        const keepSegmentIds = new Set(keepSegments.map(s => s.segmentId));
+        
+        const mergeSegments = await tx.segmentMember.findMany({
+          where: { contactId: { in: mergeIds } },
+          select: { segmentId: true, contactId: true },
+        });
+        
+        for (const seg of mergeSegments) {
+          if (!keepSegmentIds.has(seg.segmentId)) {
+            keepSegmentIds.add(seg.segmentId);
+            await tx.segmentMember.create({
+              data: { segmentId: seg.segmentId, contactId: keepContact.id },
+            }).catch(() => {});
+          }
+        }
+        
+        await tx.segmentMember.deleteMany({
+          where: { contactId: { in: mergeIds } },
+        });
+        
+        const keepEnrollments = await tx.sequenceEnrollment.findMany({
+          where: { contactId: keepContact.id },
+          select: { sequenceId: true },
+        });
+        const keepEnrollmentSeqIds = new Set(keepEnrollments.map(e => e.sequenceId));
+        
+        const mergeEnrollments = await tx.sequenceEnrollment.findMany({
+          where: { contactId: { in: mergeIds } },
+          select: { id: true, sequenceId: true },
+        });
+        
+        const enrollmentsToReassign = mergeEnrollments.filter(e => !keepEnrollmentSeqIds.has(e.sequenceId));
+        const enrollmentsToDelete = mergeEnrollments.filter(e => keepEnrollmentSeqIds.has(e.sequenceId));
+        
+        for (const enrollment of enrollmentsToReassign) {
+          await tx.sequenceEnrollment.update({
+            where: { id: enrollment.id },
+            data: { contactId: keepContact.id },
+          }).catch(() => {});
+        }
+        
+        if (enrollmentsToDelete.length > 0) {
+          await tx.sequenceEnrollmentStep.deleteMany({
+            where: { enrollmentId: { in: enrollmentsToDelete.map(e => e.id) } },
+          });
+          await tx.sequenceEnrollment.deleteMany({
+            where: { id: { in: enrollmentsToDelete.map(e => e.id) } },
+          });
+        }
+        
+        await tx.contact.deleteMany({
+          where: { id: { in: mergeIds } },
+        });
+      });
+      
+      contactsMerged += mergeIds.length;
+    }
+    
+    res.json({
+      success: true,
+      totalContacts: contacts.length,
+      phonesNormalized,
+      duplicateGroupsFound: totalDuplicateGroups,
+      contactsMerged,
+      remainingContacts: contacts.length - contactsMerged,
+      details,
+    });
+  } catch (error: any) {
+    console.error('Error in normalize-and-merge:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

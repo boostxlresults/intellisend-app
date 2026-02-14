@@ -20,6 +20,7 @@ export default function Contacts() {
   const [duplicates, setDuplicates] = useState<{ phone: string; count: number; contact_ids: string[]; names: string[] }[]>([]);
   const [loadingDuplicates, setLoadingDuplicates] = useState(false);
   const [merging, setMerging] = useState<string | null>(null);
+  const [normalizing, setNormalizing] = useState(false);
 
   const fetchContacts = async () => {
     if (!selectedTenant) return;
@@ -114,6 +115,30 @@ export default function Contacts() {
     setShowDuplicatesModal(true);
   };
 
+  const handleNormalizeAndMerge = async () => {
+    if (!selectedTenant) return;
+    if (!confirm('This will standardize all phone numbers to the same format and automatically merge any duplicate contacts that have the same phone number.\n\nThe oldest contact record will be kept, and all tags, notes, conversations, and messages from duplicates will be moved to it.\n\nContinue?')) return;
+    setNormalizing(true);
+    try {
+      const result = await api.normalizeAndMergeContacts(selectedTenant.id);
+      let message = `Done!\n\nTotal contacts: ${result.totalContacts}\nPhone numbers fixed: ${result.phonesNormalized}\nDuplicate groups found: ${result.duplicateGroupsFound}\nContacts merged: ${result.contactsMerged}\nRemaining contacts: ${result.remainingContacts}`;
+      if (result.details.length > 0) {
+        message += '\n\nDetails:\n' + result.details.slice(0, 20).join('\n');
+        if (result.details.length > 20) {
+          message += `\n...and ${result.details.length - 20} more`;
+        }
+      }
+      alert(message);
+      fetchContacts();
+      refreshTenants();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed: ' + msg);
+    } finally {
+      setNormalizing(false);
+    }
+  };
+
   const handleMerge = async (phone: string, contactIds: string[]) => {
     if (!selectedTenant || contactIds.length < 2) return;
     const keepId = contactIds[0];
@@ -137,6 +162,14 @@ export default function Contacts() {
       <div className="page-header">
         <h2>Contacts</h2>
         <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            className="btn btn-secondary" 
+            onClick={handleNormalizeAndMerge}
+            disabled={normalizing}
+            style={normalizing ? { opacity: 0.7 } : {}}
+          >
+            {normalizing ? 'Cleaning Up...' : 'Clean Up Duplicates'}
+          </button>
           <button className="btn btn-secondary" onClick={handleFindDuplicates}>
             Find Duplicates
           </button>

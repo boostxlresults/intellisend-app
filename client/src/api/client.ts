@@ -465,6 +465,11 @@ export const api = {
       body: JSON.stringify({ keepContactId, mergeContactIds }),
     }),
   
+  normalizeAndMergeContacts: (tenantId: string) =>
+    request<{ success: boolean; totalContacts: number; phonesNormalized: number; duplicateGroupsFound: number; contactsMerged: number; remainingContacts: number; details: string[] }>(`${API_BASE}/tenants/${tenantId}/contacts/normalize-and-merge`, {
+      method: 'POST',
+    }),
+  
   getSuppressions: (tenantId: string) =>
     request<Suppression[]>(`${API_BASE}/tenants/${tenantId}/suppressions`),
   
