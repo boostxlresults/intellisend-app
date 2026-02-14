@@ -782,7 +782,7 @@ router.post('/:tenantId/contacts/normalize-and-merge', async (req, res) => {
     let totalDuplicateGroups = 0;
     const details: string[] = [];
     
-    const phoneGroups = new Map<string, typeof contacts>();
+    const phoneGroups = new Map<string, Array<{ id: string; phone: string; originalPhone: string; firstName: string; lastName: string; createdAt: Date }>>();
     
     for (const contact of contacts) {
       const normalized = normalizePhone(contact.phone);
@@ -793,14 +793,14 @@ router.post('/:tenantId/contacts/normalize-and-merge', async (req, res) => {
       }
       
       const group = phoneGroups.get(normalized) || [];
-      group.push({ ...contact, phone: normalized });
+      group.push({ ...contact, originalPhone: contact.phone, phone: normalized });
       phoneGroups.set(normalized, group);
     }
     
     for (const [normalizedPhone, group] of phoneGroups) {
       if (group.length <= 1) {
         const contact = group[0];
-        if (contact.phone !== normalizedPhone) {
+        if (contact.originalPhone !== normalizedPhone) {
           await prisma.contact.update({
             where: { id: contact.id },
             data: { phone: normalizedPhone },
