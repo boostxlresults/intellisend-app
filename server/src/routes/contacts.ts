@@ -3,6 +3,7 @@ import multer from 'multer';
 import Papa from 'papaparse';
 import { prisma } from '../index';
 import { upsertTagsForContact } from './tags';
+import { normalizePhone } from '../utils/phoneNormalize';
 
 const router = Router();
 const upload = multer({ 
@@ -166,12 +167,21 @@ router.post('/:tenantId/contacts', async (req, res) => {
       return res.status(400).json({ error: 'firstName, lastName, and phone are required' });
     }
     
+    const normalizedPhone = normalizePhone(phone);
+    
+    const existingContact = await prisma.contact.findFirst({
+      where: { tenantId, phone: normalizedPhone },
+    });
+    if (existingContact) {
+      return res.status(409).json({ error: `A contact with phone number ${normalizedPhone} already exists` });
+    }
+    
     const contact = await prisma.contact.create({
       data: {
         tenantId,
         firstName,
         lastName,
-        phone,
+        phone: normalizedPhone,
         email,
         address,
         city,
@@ -255,7 +265,7 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
         }
         
         return {
-          phone: row.phone || row.phonenumber || '',
+          phone: normalizePhone(row.phone || row.phonenumber || ''),
           firstName: firstName || 'Unknown',
           lastName: lastName || 'Contact',
           email: row.email || undefined,
@@ -303,16 +313,14 @@ router.post('/:tenantId/contacts/import', upload.single('file') as any, async (r
       console.log(`[Import] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} contacts)`);
       
       try {
-        // Get all phones in this batch
         const batchPhones = batch.map(c => c.phone);
         
-        // Find existing contacts in one query
         const existingContacts = await prisma.contact.findMany({
           where: { tenantId, phone: { in: batchPhones } },
           select: { id: true, phone: true, firstName: true, lastName: true, email: true, address: true, city: true, state: true, zip: true },
         });
         
-        const existingByPhone = new Map(existingContacts.map(c => [c.phone, c]));
+        const existingByPhone = new Map(existingContacts.map(c => [normalizePhone(c.phone), c]));
         
         // Separate new vs existing
         const toCreate: any[] = [];
@@ -496,7 +504,7 @@ router.patch('/:tenantId/contacts/:contactId', async (req, res) => {
     if (aiAgentEnabled !== undefined) updateData.aiAgentEnabled = aiAgentEnabled;
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) updateData.phone = normalizePhone(phone);
     if (email !== undefined) updateData.email = email;
     if (address !== undefined) updateData.address = address;
     if (city !== undefined) updateData.city = city;
@@ -650,12 +658,22 @@ router.get('/:tenantId/contacts/duplicates', async (req, res) => {
     const { tenantId } = req.params;
     
     const duplicates = await prisma.$queryRaw`
-      SELECT phone, COUNT(*)::int as count, 
-             array_agg(id) as contact_ids,
-             array_agg("firstName" || ' ' || "lastName") as names
+      SELECT 
+        CASE 
+          WHEN LENGTH(regexp_replace(phone, '[^0-9]', '', 'g')) = 10 
+            THEN '+1' || regexp_replace(phone, '[^0-9]', '', 'g')
+          WHEN LENGTH(regexp_replace(phone, '[^0-9]', '', 'g')) = 11 
+            AND regexp_replace(phone, '[^0-9]', '', 'g') LIKE '1%'
+            THEN '+' || regexp_replace(phone, '[^0-9]', '', 'g')
+          ELSE phone
+        END as normalized_phone,
+        COUNT(*)::int as count, 
+        array_agg(id) as contact_ids,
+        array_agg("firstName" || ' ' || "lastName") as names,
+        array_agg(phone) as phone_formats
       FROM "Contact"
       WHERE "tenantId" = ${tenantId}
-      GROUP BY phone
+      GROUP BY normalized_phone
       HAVING COUNT(*) > 1
       ORDER BY COUNT(*) DESC
       LIMIT 100

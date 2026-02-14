@@ -1,5 +1,6 @@
 import { prisma } from '../index';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
+import { normalizePhone } from '../utils/phoneNormalize';
 
 async function processSequenceSteps() {
   const now = new Date();
@@ -38,10 +39,11 @@ async function processSequenceSteps() {
         continue;
       }
       
+      const normalizedContactPhone = normalizePhone(contact.phone);
       const suppressed = await prisma.suppression.findFirst({
         where: {
           tenantId: enrollmentStep.enrollment.sequence.tenantId,
-          phone: contact.phone,
+          phone: normalizedContactPhone,
         },
       });
       
@@ -79,7 +81,7 @@ async function processSequenceSteps() {
         data: {
           tenantId: enrollmentStep.enrollment.sequence.tenantId,
           contactId: contact.id,
-          phone: contact.phone,
+          phone: normalizedContactPhone,
           body: body + '\n\nReply STOP to unsubscribe',
           mediaUrl: enrollmentStep.step.mediaUrl,
           fromNumber,

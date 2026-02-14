@@ -5,6 +5,7 @@ import { isStopKeyword, isOptInKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
 import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
+import { normalizePhone } from '../utils/phoneNormalize';
 
 const router = Router();
 
@@ -43,7 +44,8 @@ async function enqueueServiceTitanBookingJob(
 
 router.post('/inbound', validateTwilioSignature, async (req, res) => {
   try {
-    const { From, To, Body, MessageSid, NumMedia } = req.body;
+    const { From: RawFrom, To, Body, MessageSid, NumMedia } = req.body;
+    const From = normalizePhone(RawFrom);
     
     // Extract media URLs from MMS (Twilio sends MediaUrl0, MediaUrl1, etc.)
     const mediaUrls: string[] = [];

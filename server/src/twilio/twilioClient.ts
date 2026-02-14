@@ -1,6 +1,7 @@
 import Twilio from 'twilio';
 import { prisma } from '../index';
 import { checkRateLimit } from '../services/rateLimiter';
+import { normalizePhone } from '../utils/phoneNormalize';
 
 const globalAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const globalAuthToken = process.env.TWILIO_AUTH_TOKEN;
@@ -242,11 +243,12 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
 }
 
 export async function checkSuppression(tenantId: string, phone: string): Promise<boolean> {
+  const normalized = normalizePhone(phone);
   const suppression = await prisma.suppression.findUnique({
     where: {
       tenantId_phone: {
         tenantId,
-        phone,
+        phone: normalized,
       },
     },
   });

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient, ConsentSource } from '@prisma/client';
+import { normalizePhone } from '../utils/phoneNormalize';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -11,7 +12,7 @@ router.get('/:tenantId/consent', async (req, res) => {
 
     const where: Record<string, unknown> = { tenantId };
     if (contactId) where.contactId = contactId;
-    if (phone) where.phone = phone;
+    if (phone) where.phone = normalizePhone(phone as string);
 
     const records = await prisma.consentRecord.findMany({
       where,
@@ -45,7 +46,7 @@ router.post('/:tenantId/consent', async (req, res) => {
       data: {
         tenantId,
         contactId,
-        phone,
+        phone: normalizePhone(phone),
         consentSource: consentSource as ConsentSource,
         sourceDetails,
         consentText,

@@ -3,6 +3,7 @@ import { checkSuppression } from '../twilio/twilioClient';
 import { generateImprovedMessage } from '../ai/aiEngine';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 import { queueCampaignMessages } from './queueDispatcher';
+import { normalizePhone } from '../utils/phoneNormalize';
 
 const SCHEDULER_INTERVAL_MS = 60000;
 
@@ -136,7 +137,7 @@ async function processScheduledCampaigns() {
         },
       });
       const totalAlreadyProcessed = existingSentCount + existingQueuedCount;
-      const uniquePhoneCount = new Set(allSegmentMembers.map(m => m.contact.phone)).size;
+      const uniquePhoneCount = new Set(allSegmentMembers.map(m => normalizePhone(m.contact.phone))).size;
       const maxAllowedMessages = uniquePhoneCount;
       
       if (totalAlreadyProcessed >= maxAllowedMessages) {
@@ -195,7 +196,7 @@ async function processScheduledCampaigns() {
         },
         select: { toNumber: true },
       });
-      existingPhoneDeliveries.forEach(m => processedPhones.add(m.toNumber));
+      existingPhoneDeliveries.forEach(m => processedPhones.add(normalizePhone(m.toNumber)));
       
       const queuedPhones = await prisma.outboundMessageQueue.findMany({
         where: {
@@ -205,7 +206,7 @@ async function processScheduledCampaigns() {
         },
         select: { phone: true },
       });
-      queuedPhones.forEach(q => processedPhones.add(q.phone));
+      queuedPhones.forEach(q => processedPhones.add(normalizePhone(q.phone)));
       
       for (const member of allSegmentMembers) {
         const contact = member.contact;
@@ -217,12 +218,13 @@ async function processScheduledCampaigns() {
           }
           
           // Skip if phone number already processed (prevents duplicate sends to same phone via different contact records)
-          if (processedPhones.has(contact.phone)) {
+          const contactNormalizedPhone = normalizePhone(contact.phone);
+          if (processedPhones.has(contactNormalizedPhone)) {
             skippedCount++;
             continue;
           }
           
-          const isSuppressed = await checkSuppression(campaign.tenantId, contact.phone);
+          const isSuppressed = await checkSuppression(campaign.tenantId, contactNormalizedPhone);
           
           if (isSuppressed) {
             suppressedCount++;
@@ -250,15 +252,14 @@ async function processScheduledCampaigns() {
           
           messagesToQueue.push({
             contactId: contact.id,
-            phone: contact.phone,
+            phone: contactNormalizedPhone,
             body: messageBody,
             fromNumber: sendContext.fromNumber,
             mediaUrl: (firstStep as any).mediaUrl || undefined,
             sendAsMms: (firstStep as any).sendAsMms || false,
           });
           
-          // Mark phone as processed to prevent duplicates from other contact records
-          processedPhones.add(contact.phone);
+          processedPhones.add(contactNormalizedPhone);
         } catch (error: any) {
           console.error(`Error preparing ${contact.phone}:`, error.message);
         }
