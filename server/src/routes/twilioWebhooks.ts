@@ -221,7 +221,39 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         where: { tenantId, phone: From },
       });
       
-      console.log(`Contact ${From} opted IN for tenant ${tenantId} - tagged as "Opted In"`);
+      // Create a formal ConsentRecord for TCPA audit trail
+      // Each Y reply creates a new timestamped record for a complete audit trail
+      await prisma.consentRecord.create({
+        data: {
+          tenantId,
+          contactId: contact.id,
+          phone: From,
+          consentSource: 'SMS_KEYWORD',
+          sourceDetails: `Replied "${Body?.trim()}" to inbound SMS opt-in request`,
+          consentText: 'Customer replied Y/YES to opt-in request via SMS',
+          consentGiven: true,
+          givenAt: new Date(),
+        },
+      }).catch(err => console.error('[Consent] Failed to create ConsentRecord (non-blocking):', err));
+      
+      // Queue the TCPA-required opt-in confirmation SMS
+      // This completes the express written consent loop and is legally required
+      const confirmationMessage = `Thanks ${contact.firstName || 'there'}! You're now signed up for service alerts & special offers from ${tenant.publicName}. Avg 2-4 msgs/month. Reply STOP anytime to unsubscribe.`;
+      
+      await prisma.outboundMessageQueue.create({
+        data: {
+          tenantId,
+          contactId: contact.id,
+          conversationId: conversation.id,
+          phone: From,
+          body: confirmationMessage,
+          fromNumber: To, // Reply from the same number they texted
+          status: 'PENDING',
+          processAfter: new Date(Date.now() + 5000), // 5 second delay
+        },
+      });
+      
+      console.log(`Contact ${From} opted IN for tenant ${tenantId} - tagged, ConsentRecord created, confirmation SMS queued`);
     }
     
     await prisma.conversation.update({
