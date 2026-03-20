@@ -210,6 +210,10 @@ export interface CampaignAnalytics {
   messagesDelivered: number;
   messagesFailed: number;
   deliveryRate: number;
+  replyRate: number;
+  totalBookings: number;
+  totalRevenue: number;
+  revenuePerMessage: number;
   createdAt: string;
 }
 

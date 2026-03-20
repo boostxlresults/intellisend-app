@@ -225,44 +225,94 @@ export default function Analytics() {
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Campaign Performance</h3>
             {campaigns.length > 0 ? (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Campaign</th>
-                    <th>Status</th>
-                    <th>Audience</th>
-                    <th>Sent</th>
-                    <th>Delivered</th>
-                    <th>Failed</th>
-                    <th>Delivery Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaigns.map((campaign) => (
-                    <tr key={campaign.id}>
-                      <td>{campaign.name}</td>
-                      <td>
-                        <span style={{
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          backgroundColor: campaign.status === 'COMPLETED' ? '#c6f6d5' : 
-                                          campaign.status === 'RUNNING' ? '#bee3f8' : '#e2e8f0',
-                          color: campaign.status === 'COMPLETED' ? '#276749' :
-                                 campaign.status === 'RUNNING' ? '#2b6cb0' : '#4a5568',
-                        }}>
-                          {campaign.status}
-                        </span>
-                      </td>
-                      <td>{campaign.audienceSize}</td>
-                      <td>{campaign.messagesSent}</td>
-                      <td>{campaign.messagesDelivered}</td>
-                      <td>{campaign.messagesFailed}</td>
-                      <td>{campaign.deliveryRate}%</td>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table" style={{ minWidth: '900px' }}>
+                  <thead>
+                    <tr>
+                      <th>Campaign</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Audience</th>
+                      <th style={{ textAlign: 'right' }}>Sent</th>
+                      <th style={{ textAlign: 'right' }}>Delivery</th>
+                      <th style={{ textAlign: 'right' }}>Reply Rate</th>
+                      <th style={{ textAlign: 'right' }}>Bookings</th>
+                      <th style={{ textAlign: 'right' }}>Revenue</th>
+                      <th style={{ textAlign: 'right' }}>Rev / SMS</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {campaigns.map((campaign) => (
+                      <tr key={campaign.id}>
+                        <td style={{ fontWeight: 500 }}>{campaign.name}</td>
+                        <td>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            backgroundColor: campaign.status === 'COMPLETED' ? '#c6f6d5' :
+                                            campaign.status === 'RUNNING' ? '#bee3f8' :
+                                            campaign.status === 'PAUSED' ? '#fefcbf' : '#e2e8f0',
+                            color: campaign.status === 'COMPLETED' ? '#276749' :
+                                   campaign.status === 'RUNNING' ? '#2b6cb0' :
+                                   campaign.status === 'PAUSED' ? '#975a16' : '#4a5568',
+                          }}>
+                            {campaign.status}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{campaign.audienceSize.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right' }}>{campaign.messagesSent.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span style={{ color: campaign.deliveryRate >= 90 ? '#276749' : campaign.deliveryRate >= 75 ? '#975a16' : '#c53030', fontWeight: 600 }}>
+                            {campaign.deliveryRate}%
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span style={{ color: '#553c9a', fontWeight: 600 }}>
+                            {campaign.replyRate ?? 0}%
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {(campaign.totalBookings ?? 0) > 0 ? (
+                            <span style={{
+                              background: '#c6f6d5',
+                              color: '#276749',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 700,
+                              fontSize: '13px',
+                            }}>
+                              {campaign.totalBookings}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#a0aec0' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {(campaign.totalRevenue ?? 0) > 0 ? (
+                            <span style={{ color: '#276749', fontWeight: 700 }}>
+                              ${campaign.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#a0aec0' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {(campaign.revenuePerMessage ?? 0) > 0 ? (
+                            <span style={{ color: '#2b6cb0', fontWeight: 600 }}>
+                              ${campaign.revenuePerMessage.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#a0aec0' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p style={{ color: '#718096', textAlign: 'center', padding: '20px 0' }}>No campaigns found for this period</p>
             )}
