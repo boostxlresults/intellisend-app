@@ -155,12 +155,19 @@ router.get('/:tenantId/analytics/campaigns', async (req, res) => {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 10,
+      take: 20,
     });
+
+    // Fetch revenue fields separately since Prisma client may not have them yet
+    const campaignRevenue = await prisma.$queryRaw<Array<{id: string; totalBookings: number; totalRevenue: number}>>`
+      SELECT id, "totalBookings", "totalRevenue" FROM "Campaign"
+      WHERE "tenantId" = ${tenantId}
+    `;
+    const revenueMap = new Map(campaignRevenue.map(r => [r.id, r]));
 
     const campaignStats = await Promise.all(
       campaigns.map(async (campaign) => {
-        const [sent, delivered, failed] = await Promise.all([
+        const [sent, delivered, failed, replies] = await Promise.all([
           prisma.messageEvent.count({
             where: { tenantId, campaignId: campaign.id, eventType: 'SENT' },
           }),
@@ -169,6 +176,9 @@ router.get('/:tenantId/analytics/campaigns', async (req, res) => {
           }),
           prisma.messageEvent.count({
             where: { tenantId, campaignId: campaign.id, eventType: 'FAILED' },
+          }),
+          prisma.message.count({
+            where: { tenantId, campaignId: campaign.id, direction: 'INBOUND' },
           }),
         ]);
 
@@ -181,6 +191,12 @@ router.get('/:tenantId/analytics/campaigns', async (req, res) => {
           messagesDelivered: delivered,
           messagesFailed: failed,
           deliveryRate: sent > 0 ? Math.round((delivered / sent) * 100) : 0,
+          replyRate: sent > 0 ? parseFloat(((replies / sent) * 100).toFixed(2)) : 0,
+          totalBookings: revenueMap.get(campaign.id)?.totalBookings || 0,
+          totalRevenue: revenueMap.get(campaign.id)?.totalRevenue || 0,
+          revenuePerMessage: sent > 0 && (revenueMap.get(campaign.id)?.totalRevenue || 0) > 0
+            ? parseFloat(((revenueMap.get(campaign.id)!.totalRevenue) / sent).toFixed(2))
+            : 0,
           createdAt: campaign.createdAt,
         };
       })

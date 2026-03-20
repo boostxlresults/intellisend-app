@@ -1,5 +1,6 @@
 import { prisma } from '../index';
 import { syncServiceTitanContacts } from './serviceTitanContactSync';
+import { syncServiceTitanRevenue } from './serviceTitanRevenueSync';
 
 const CHECK_INTERVAL_MS = 60000;
 
@@ -32,9 +33,15 @@ async function checkAndRunNightlySync() {
       
       for (const tenant of tenants) {
         try {
-          console.log(`[Nightly Sync] Syncing tenant ${tenant.tenantId}`);
+          console.log(`[Nightly Sync] Syncing contacts for tenant ${tenant.tenantId}`);
           const result = await syncServiceTitanContacts(tenant.tenantId);
           console.log(`[Nightly Sync] Tenant ${tenant.tenantId}: ${result.matchedContacts} matched, ${result.newlyTagged} newly tagged`);
+          
+          console.log(`[Nightly Sync] Syncing revenue for tenant ${tenant.tenantId}`);
+          const revenueResult = await syncServiceTitanRevenue(tenant.tenantId);
+          if (revenueResult.success) {
+            console.log(`[Nightly Sync] Tenant ${tenant.tenantId} revenue: ${revenueResult.updatedCount} jobs updated, $${revenueResult.revenueFound} found`);
+          }
         } catch (error) {
           console.error(`[Nightly Sync] Error syncing tenant ${tenant.tenantId}:`, error);
         }

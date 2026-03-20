@@ -288,6 +288,9 @@ model Campaign {
   complianceQuietHoursOk   Boolean @default(false)
   complianceContentReviewed Boolean @default(false)
   complianceNotes         String?
+  
+  totalBookings           Int      @default(0)
+  totalRevenue            Float    @default(0.0)
 
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   segment          Segment?          @relation(fields: [segmentId], references: [id], onDelete: SetNull)
@@ -341,6 +344,8 @@ model Conversation {
   isTestConversation Boolean       @default(false)
   serviceTitanBookingId       String?
   serviceTitanBookingCreatedAt DateTime?
+  serviceTitanJobId           String?
+  serviceTitanRevenue         Float?
   phoneNumber   String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
