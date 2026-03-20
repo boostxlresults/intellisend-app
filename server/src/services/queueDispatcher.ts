@@ -11,6 +11,9 @@ const DUPLICATE_ALERT_THRESHOLD = 3;
 const campaignDuplicateCounts = new Map<string, number>();
 const alertedCampaigns = new Set<string>();
 
+// Safety: prevent overlapping dispatcher runs
+let dispatcherRunning = false;
+
 interface SendSettings {
   sendRatePerMinute: number;
   sendJitterMinMs: number;
@@ -72,6 +75,10 @@ export function startQueueDispatcher() {
   console.log('Queue dispatcher started');
 
   setInterval(async () => {
+    if (dispatcherRunning) {
+      console.warn('[Dispatcher] Previous run still in progress, skipping this tick');
+      return;
+    }
     await processOutboundQueue();
   }, DISPATCHER_INTERVAL_MS);
 
@@ -84,6 +91,7 @@ export function startQueueDispatcher() {
 }
 
 async function processOutboundQueue() {
+  dispatcherRunning = true;
   try {
     const now = new Date();
 
@@ -447,7 +455,9 @@ async function processOutboundQueue() {
       }
     }
   } catch (error: any) {
-    console.error('Queue dispatcher error:', error.message);
+    console.error('[Dispatcher] Queue dispatcher error:', error.message);
+  } finally {
+    dispatcherRunning = false;
   }
 }
 
