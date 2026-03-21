@@ -332,6 +332,17 @@ async function processSingleCampaign(campaign: any, now: Date) {
         .replace(/{{phone}}/g, contact.phone)
         .replace(/{{companyName}}/g, companyName);
       
+      // Auto-inject STOP footer if not already present — ensures TCPA compliance
+      // on every campaign blast regardless of what the template contains
+      const lowerBody = messageBody.toLowerCase();
+      const hasStopFooter = lowerBody.includes('reply stop') ||
+                            lowerBody.includes('text stop') ||
+                            lowerBody.includes('stop to unsubscribe') ||
+                            lowerBody.includes('unsubscribe');
+      if (!hasStopFooter) {
+        messageBody = messageBody + '\n\nReply STOP to unsubscribe.';
+      }
+      
       messagesToQueue.push({
         contactId: contact.id,
         phone: contactNormalizedPhone,
