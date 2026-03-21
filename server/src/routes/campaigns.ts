@@ -499,4 +499,61 @@ router.get('/:tenantId/campaigns/:campaignId/ab-results', async (req, res) => {
   }
 });
 
+// Edit a campaign step — only allowed for DRAFT, SCHEDULED, and PAUSED campaigns
+router.put('/:tenantId/campaigns/:campaignId/steps/:stepId', async (req, res) => {
+  try {
+    const { tenantId, campaignId, stepId } = req.params;
+    const { bodyTemplate, useAiAssist, mediaUrl, sendAsMms, delayMinutes } = req.body;
+
+    if (!bodyTemplate) {
+      return res.status(400).json({ error: 'bodyTemplate is required' });
+    }
+
+    // Verify the campaign belongs to this tenant
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, tenantId },
+      select: { id: true, status: true, name: true },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    // Status guard: only allow editing if campaign has not started sending
+    const editableStatuses = ['DRAFT', 'SCHEDULED', 'PAUSED'];
+    if (!editableStatuses.includes(campaign.status)) {
+      return res.status(409).json({
+        error: `Cannot edit a campaign step while campaign is ${campaign.status}. Only DRAFT, SCHEDULED, and PAUSED campaigns can be edited.`,
+      });
+    }
+
+    // Verify the step belongs to this campaign
+    const existingStep = await prisma.campaignStep.findFirst({
+      where: { id: stepId, campaignId },
+    });
+
+    if (!existingStep) {
+      return res.status(404).json({ error: 'Campaign step not found' });
+    }
+
+    const updatedStep = await prisma.campaignStep.update({
+      where: { id: stepId },
+      data: {
+        bodyTemplate,
+        useAiAssist: useAiAssist !== undefined ? useAiAssist : existingStep.useAiAssist,
+        mediaUrl: mediaUrl !== undefined ? mediaUrl : existingStep.mediaUrl,
+        sendAsMms: sendAsMms !== undefined ? sendAsMms : existingStep.sendAsMms,
+        delayMinutes: delayMinutes !== undefined ? delayMinutes : existingStep.delayMinutes,
+      },
+    });
+
+    console.log(`[Campaigns] Step ${stepId} updated for campaign ${campaign.name} (${campaignId}) - status: ${campaign.status}`);
+
+    res.json(updatedStep);
+  } catch (error: any) {
+    console.error('Error updating campaign step:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

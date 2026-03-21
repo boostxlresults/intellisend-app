@@ -560,6 +560,18 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  updateCampaignStep: (tenantId: string, campaignId: string, stepId: string, data: {
+    bodyTemplate: string;
+    useAiAssist?: boolean;
+    mediaUrl?: string;
+    sendAsMms?: boolean;
+    delayMinutes?: number;
+  }) =>
+    request<CampaignStep>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/steps/${stepId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   getConsentRecords: (tenantId: string, options?: { contactId?: string; phone?: string }) =>
     request<Array<{
       id: string;

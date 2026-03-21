@@ -39,6 +39,9 @@ export default function Campaigns() {
   const [imageUrl, setImageUrl] = useState('');
   const [sendAsMms, setSendAsMms] = useState(false);
   const [complianceLoading, setComplianceLoading] = useState(false);
+  const [showEditStepModal, setShowEditStepModal] = useState(false);
+  const [editStepBody, setEditStepBody] = useState('');
+  const [editStepLoading, setEditStepLoading] = useState(false);
   const [compliance, setCompliance] = useState<ComplianceChecklist>({
     consentVerified: false,
     optOutIncluded: false,
@@ -205,6 +208,37 @@ export default function Campaigns() {
 
   const allComplianceChecked = compliance.consentVerified && compliance.optOutIncluded && compliance.quietHoursOk && compliance.contentReviewed;
 
+  const openEditStepModal = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setEditStepBody(campaign.steps?.[0]?.bodyTemplate || '');
+    setShowEditStepModal(true);
+  };
+
+  const handleEditStepSubmit = async () => {
+    if (!selectedTenant || !selectedCampaign || !selectedCampaign.steps?.[0]) return;
+    if (!editStepBody.trim()) {
+      alert('Message body cannot be empty.');
+      return;
+    }
+    setEditStepLoading(true);
+    try {
+      await api.updateCampaignStep(
+        selectedTenant.id,
+        selectedCampaign.id,
+        selectedCampaign.steps[0].id,
+        { bodyTemplate: editStepBody.trim() }
+      );
+      alert('Campaign message updated successfully!');
+      setShowEditStepModal(false);
+      fetchCampaigns();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert('Failed to update campaign step: ' + message);
+    } finally {
+      setEditStepLoading(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -257,6 +291,15 @@ export default function Campaigns() {
                         : campaign.segment?.name || '-'
                     }</td>
                     <td style={{ display: 'flex', gap: '4px' }}>
+                      {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(campaign.status) && campaign.steps?.[0] && (
+                        <button
+                          className="btn btn-small btn-secondary"
+                          onClick={() => openEditStepModal(campaign)}
+                          title="Edit message body"
+                        >
+                          Edit
+                        </button>
+                      )}
                       {campaign.status === 'DRAFT' && (
                         <button
                           className="btn btn-small btn-secondary"
@@ -471,6 +514,43 @@ export default function Campaigns() {
               <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
               <button className="btn btn-secondary" onClick={() => handleCreateCampaign(false)}>Save as Draft</button>
               <button className="btn btn-primary" onClick={() => handleCreateCampaign(true)}>Review & Send</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditStepModal && selectedCampaign && (
+        <div className="modal-overlay" onClick={() => setShowEditStepModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+            <h3>Edit Campaign Message</h3>
+            <p style={{ color: '#718096', marginBottom: '16px', fontSize: '14px' }}>
+              Campaign: <strong>{selectedCampaign.name}</strong>
+              <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', background: '#ebf8ff', color: '#2b6cb0' }}>
+                {selectedCampaign.status}
+              </span>
+            </p>
+            <div className="form-group">
+              <label>Message Body</label>
+              <textarea
+                value={editStepBody}
+                onChange={(e) => setEditStepBody(e.target.value)}
+                rows={6}
+                style={{ fontFamily: 'inherit', fontSize: '14px' }}
+                placeholder="Enter your message..."
+              />
+              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                {editStepBody.length} characters · IntelliSend will automatically append "Reply STOP to unsubscribe" if not already present.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowEditStepModal(false)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleEditStepSubmit}
+                disabled={editStepLoading || !editStepBody.trim()}
+              >
+                {editStepLoading ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>
