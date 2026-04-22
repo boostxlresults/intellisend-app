@@ -109,7 +109,7 @@ export interface Campaign {
   tenantId: string;
   name: string;
   description?: string;
-  type: 'BLAST' | 'DRIP';
+  type: 'BLAST' | 'DRIP' | 'PSA';
   status: 'DRAFT' | 'SCHEDULED' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
   segmentId?: string;
   segment?: Segment;

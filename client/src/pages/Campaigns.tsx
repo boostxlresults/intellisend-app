@@ -391,7 +391,7 @@ export default function Campaigns() {
                         : campaign.segment?.name || '-'
                     }</td>
                     <td style={{ display: 'flex', gap: '4px' }}>
-                      {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(campaign.status) && campaign.steps?.length > 0 && (
+                      {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(campaign.status) && (campaign.steps?.length ?? 0) > 0 && (
                         <button
                           className="btn btn-small btn-secondary"
                           onClick={() => openEditStepModal(campaign)}
