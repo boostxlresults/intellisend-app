@@ -756,37 +756,6 @@ export default function Settings() {
           
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3>Suppressions</h3>
-              <button className="btn btn-secondary btn-small" onClick={() => setShowAddSuppression(true)}>
-                Add Suppression
-              </button>
-            </div>
-            {suppressions.length === 0 ? (
-              <p className="empty-state">No suppressions</p>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Phone</th>
-                    <th>Reason</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppressions.map(sup => (
-                    <tr key={sup.id}>
-                      <td>{sup.phone}</td>
-                      <td>{sup.reason}</td>
-                      <td>{new Date(sup.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3>AI Personas</h3>
               <button className="btn btn-secondary btn-small" onClick={() => setShowAddPersona(true)}>
                 Add Persona
@@ -1275,6 +1244,37 @@ export default function Settings() {
                 </div>
               )}
             </form>
+          </div>
+
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3>Suppressions</h3>
+              <button className="btn btn-secondary btn-small" onClick={() => setShowAddSuppression(true)}>
+                Add Suppression
+              </button>
+            </div>
+            {suppressions.length === 0 ? (
+              <p className="empty-state">No suppressions</p>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Phone</th>
+                    <th>Reason</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppressions.map(sup => (
+                    <tr key={sup.id}>
+                      <td>{sup.phone}</td>
+                      <td>{sup.reason}</td>
+                      <td>{new Date(sup.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div className="card">

@@ -3,6 +3,7 @@ import { useTenant } from '../context/TenantContext';
 import { api, Campaign, Segment } from '../api/client';
 
 type AiGoal = 'higher_reply_rate' | 'more_compliant' | 'shorter' | 'friendlier';
+type CampaignType = 'BLAST' | 'PSA';
 
 interface ComplianceChecklist {
   consentVerified: boolean;
@@ -19,6 +20,68 @@ interface Template {
   bodyTemplate: string;
 }
 
+// ── Character / segment counter ──────────────────────────────────────────────
+function SmsCounter({ body }: { body: string }) {
+  const len = body.length;
+  const isUnicode = /[^\x00-\x7F]/.test(body);
+  const segmentSize = isUnicode ? 70 : 160;
+  const multiSegmentSize = isUnicode ? 67 : 153;
+  let segments = 1;
+  if (len > segmentSize) {
+    segments = Math.ceil(len / multiSegmentSize);
+  }
+  const color = len > 320 ? '#e53e3e' : len > 160 ? '#ed8936' : '#718096';
+  return (
+    <p style={{ fontSize: '12px', color, marginTop: '4px' }}>
+      {len} characters · {segments} SMS segment{segments > 1 ? 's' : ''}
+      {isUnicode && ' · Unicode detected (shorter limit)'}
+      {' '}· IntelliSend auto-appends "Reply STOP to unsubscribe"
+    </p>
+  );
+}
+
+// ── Campaign type card ────────────────────────────────────────────────────────
+function TypeCard({
+  type,
+  selected,
+  onClick,
+}: {
+  type: CampaignType;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const isBlast = type === 'BLAST';
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        flex: 1,
+        border: `2px solid ${selected ? '#3182ce' : '#e2e8f0'}`,
+        borderRadius: '10px',
+        padding: '14px 16px',
+        cursor: 'pointer',
+        background: selected ? '#ebf8ff' : '#fff',
+        transition: 'all 0.15s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+        <span style={{ fontSize: '20px' }}>{isBlast ? '📣' : '📢'}</span>
+        <strong style={{ color: selected ? '#2b6cb0' : '#2d3748' }}>
+          {isBlast ? 'Blast Campaign' : 'PSA Campaign'}
+        </strong>
+        {selected && (
+          <span style={{ marginLeft: 'auto', color: '#3182ce', fontSize: '16px' }}>✓</span>
+        )}
+      </div>
+      <p style={{ fontSize: '12px', color: '#718096', margin: 0 }}>
+        {isBlast
+          ? 'Send a promotional message to opted-in contacts. Requires TCPA compliance review.'
+          : 'Send a public service announcement to cold contacts. Opt-in replies (Y) are auto-promoted to your warm segment.'}
+      </p>
+    </div>
+  );
+}
+
 export default function Campaigns() {
   const { selectedTenant } = useTenant();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -28,8 +91,13 @@ export default function Campaigns() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+
+  // Form state
+  const [campaignType, setCampaignType] = useState<CampaignType>('BLAST');
   const [campaignName, setCampaignName] = useState('');
   const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
+  const [psaOptInSegmentId, setPsaOptInSegmentId] = useState('');
+  const [psaOptInCooldownHours, setPsaOptInCooldownHours] = useState(24);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [messageBody, setMessageBody] = useState('');
   const [useAi, setUseAi] = useState(false);
@@ -87,32 +155,36 @@ export default function Campaigns() {
     fetchCampaigns();
   }, [selectedTenant]);
 
-  const openCreateModal = async () => {
-    await Promise.all([fetchSegments(), fetchTemplates()]);
-    setShowCreateModal(true);
+  const resetForm = () => {
+    setCampaignType('BLAST');
     setCampaignName('');
     setSelectedSegments([]);
+    setPsaOptInSegmentId('');
+    setPsaOptInCooldownHours(24);
     setSelectedTemplate('');
     setMessageBody('');
     setUseAi(false);
     setImprovedMessage('');
     setImageUrl('');
+    setSendAsMms(false);
+  };
+
+  const openCreateModal = async () => {
+    await Promise.all([fetchSegments(), fetchTemplates()]);
+    resetForm();
+    setShowCreateModal(true);
   };
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId);
     if (templateId) {
       const template = templates.find(t => t.id === templateId);
-      if (template) {
-        setMessageBody(template.bodyTemplate);
-      }
+      if (template) setMessageBody(template.bodyTemplate);
     }
   };
 
   const groupedTemplates = templates.reduce((acc, template) => {
-    if (!acc[template.category]) {
-      acc[template.category] = [];
-    }
+    if (!acc[template.category]) acc[template.category] = [];
     acc[template.category].push(template);
     return acc;
   }, {} as Record<string, Template[]>);
@@ -136,11 +208,17 @@ export default function Campaigns() {
       alert('Please fill in all required fields');
       return;
     }
+    if (campaignType === 'PSA' && !psaOptInSegmentId) {
+      alert('PSA campaigns require an Opt-In Destination Segment. Please select one.');
+      return;
+    }
     try {
       const campaign = await api.createCampaign(selectedTenant.id, {
         name: campaignName,
-        type: 'BLAST',
+        type: campaignType,
         segmentIds: selectedSegments,
+        psaOptInSegmentId: campaignType === 'PSA' ? psaOptInSegmentId : undefined,
+        psaOptInCooldownHours: campaignType === 'PSA' ? psaOptInCooldownHours : undefined,
         steps: [{
           bodyTemplate: improvedMessage || messageBody,
           delayMinutes: 0,
@@ -148,12 +226,12 @@ export default function Campaigns() {
           mediaUrl: imageUrl || undefined,
           sendAsMms: sendAsMms,
         }],
-      });
-      
+      } as any);
+
       if (sendNow) {
         setSelectedCampaign(campaign);
         setCompliance({
-          consentVerified: false,
+          consentVerified: campaignType === 'PSA', // PSA doesn't need prior consent
           optOutIncluded: false,
           quietHoursOk: false,
           contentReviewed: false,
@@ -188,14 +266,12 @@ export default function Campaigns() {
     setComplianceLoading(true);
     try {
       await api.updateCampaignCompliance(selectedTenant.id, selectedCampaign.id, compliance);
-      
       if (compliance.consentVerified && compliance.optOutIncluded && compliance.quietHoursOk && compliance.contentReviewed) {
         await api.scheduleCampaign(selectedTenant.id, selectedCampaign.id);
         alert('Compliance approved and campaign scheduled!');
       } else {
         alert('Compliance checklist saved. Complete all items to schedule the campaign.');
       }
-      
       setShowComplianceModal(false);
       fetchCampaigns();
     } catch (error: unknown) {
@@ -216,10 +292,7 @@ export default function Campaigns() {
 
   const handleEditStepSubmit = async () => {
     if (!selectedTenant || !selectedCampaign || !selectedCampaign.steps?.[0]) return;
-    if (!editStepBody.trim()) {
-      alert('Message body cannot be empty.');
-      return;
-    }
+    if (!editStepBody.trim()) { alert('Message body cannot be empty.'); return; }
     setEditStepLoading(true);
     try {
       await api.updateCampaignStep(
@@ -239,15 +312,31 @@ export default function Campaigns() {
     }
   };
 
+  // ── Shared section heading style ─────────────────────────────────────────
+  const sectionLabel: React.CSSProperties = {
+    fontSize: '11px',
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: '#718096',
+    marginBottom: '8px',
+    marginTop: '20px',
+  };
+
+  const divider: React.CSSProperties = {
+    borderTop: '1px solid #e2e8f0',
+    margin: '20px 0 0',
+  };
+
   return (
     <div>
       <div className="page-header">
         <h2>Campaigns</h2>
         <button className="btn btn-primary" onClick={openCreateModal}>
-          Create Campaign
+          + Create Campaign
         </button>
       </div>
-      
+
       <div className="card">
         {loading ? (
           <p>Loading campaigns...</p>
@@ -272,7 +361,18 @@ export default function Campaigns() {
                 return (
                   <tr key={campaign.id}>
                     <td>{campaign.name}</td>
-                    <td>{campaign.type}</td>
+                    <td>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        background: campaign.type === 'PSA' ? '#fef3c7' : '#ebf8ff',
+                        color: campaign.type === 'PSA' ? '#92400e' : '#2b6cb0',
+                      }}>
+                        {campaign.type === 'PSA' ? '📢 PSA' : '📣 BLAST'}
+                      </span>
+                    </td>
                     <td>
                       <span className={`status-badge ${campaign.status.toLowerCase()}`}>
                         {campaign.status}
@@ -280,7 +380,7 @@ export default function Campaigns() {
                     </td>
                     <td>
                       {complianceComplete ? (
-                        <span style={{ color: '#38a169' }}>&#10003; Approved</span>
+                        <span style={{ color: '#38a169' }}>✓ Approved</span>
                       ) : (
                         <span style={{ color: '#ed8936' }}>Pending</span>
                       )}
@@ -291,7 +391,7 @@ export default function Campaigns() {
                         : campaign.segment?.name || '-'
                     }</td>
                     <td style={{ display: 'flex', gap: '4px' }}>
-                      {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(campaign.status) && campaign.steps?.[0] && (
+                      {['DRAFT', 'SCHEDULED', 'PAUSED'].includes(campaign.status) && campaign.steps?.length > 0 && (
                         <button
                           className="btn btn-small btn-secondary"
                           onClick={() => openEditStepModal(campaign)}
@@ -321,7 +421,7 @@ export default function Campaigns() {
                               alert(data.message || 'Campaign paused');
                               const updated = await api.getCampaigns(selectedTenant.id);
                               setCampaigns(updated);
-                            } catch (err) {
+                            } catch {
                               alert('Failed to pause campaign');
                             }
                           }}
@@ -337,97 +437,280 @@ export default function Campaigns() {
           </table>
         )}
       </div>
-      
+
+      {/* ── CREATE CAMPAIGN MODAL ─────────────────────────────────────────── */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            <h3>Create Blast Campaign</h3>
-            <div className="form-group">
-              <label>Campaign Name *</label>
+          <div
+            className="modal"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '640px', padding: '28px 32px' }}
+          >
+            {/* Header */}
+            <div style={{ marginBottom: '4px' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', color: '#1a202c' }}>Create Campaign</h3>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#718096' }}>
+                Fill in the details below. Required fields are marked with *.
+              </p>
+            </div>
+
+            {/* ── STEP 1: Campaign Type ── */}
+            <div style={divider} />
+            <p style={sectionLabel}>Step 1 — Campaign Type</p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <TypeCard type="BLAST" selected={campaignType === 'BLAST'} onClick={() => setCampaignType('BLAST')} />
+              <TypeCard type="PSA" selected={campaignType === 'PSA'} onClick={() => setCampaignType('PSA')} />
+            </div>
+
+            {/* PSA info banner */}
+            {campaignType === 'PSA' && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px 14px',
+                background: '#fffbeb',
+                border: '1px solid #f6e05e',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#744210',
+              }}>
+                <strong>📋 How PSA campaigns work:</strong> Your message is sent as a public service announcement to cold contacts. When a contact replies <strong>Y</strong>, they are automatically moved to your selected opt-in segment and a 24-hour cooldown begins before any marketing messages are sent. This is the legally safe way to build your opted-in list.
+              </div>
+            )}
+
+            {/* ── STEP 2: Campaign Name ── */}
+            <div style={divider} />
+            <p style={sectionLabel}>Step 2 — Campaign Details</p>
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+              <label style={{ fontWeight: 600, fontSize: '14px' }}>Campaign Name *</label>
               <input
                 type="text"
                 value={campaignName}
                 onChange={(e) => setCampaignName(e.target.value)}
-                placeholder="Enter campaign name"
+                placeholder="e.g. Summer AC Tune-Up Blast — June 2026"
+                style={{ marginTop: '6px' }}
               />
             </div>
-            <div className="form-group">
-              <label>Select Segments * {selectedSegments.length > 0 && <span style={{ fontWeight: 'normal', color: '#718096' }}>({selectedSegments.length} selected)</span>}</label>
-              <div style={{ 
-                border: '1px solid #cbd5e0', 
-                borderRadius: '6px', 
-                maxHeight: '160px', 
-                overflowY: 'auto', 
-                padding: '8px' 
-              }}>
-                {segments.length === 0 ? (
-                  <p style={{ color: '#718096', margin: 0, fontSize: '14px' }}>No segments available. Create segments first.</p>
-                ) : (
-                  segments.map(segment => (
-                    <label key={segment.id} style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '8px', 
-                      padding: '6px 4px',
+
+            {/* ── STEP 3: Segments ── */}
+            <div style={divider} />
+            <p style={sectionLabel}>
+              Step 3 — {campaignType === 'PSA' ? 'Target Segment (Who receives the PSA)' : 'Select Segments'} *
+            </p>
+            <div style={{
+              border: '1px solid #cbd5e0',
+              borderRadius: '8px',
+              maxHeight: '180px',
+              overflowY: 'auto',
+              padding: '8px',
+              background: '#fafafa',
+            }}>
+              {segments.length === 0 ? (
+                <p style={{ color: '#718096', margin: 0, fontSize: '14px', padding: '8px' }}>
+                  No segments available. Create segments first.
+                </p>
+              ) : (
+                segments.map(segment => (
+                  <label
+                    key={segment.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 10px',
                       cursor: 'pointer',
-                      borderRadius: '4px',
-                      backgroundColor: selectedSegments.includes(segment.id) ? '#ebf8ff' : 'transparent',
+                      borderRadius: '6px',
+                      marginBottom: '2px',
+                      background: selectedSegments.includes(segment.id) ? '#ebf8ff' : 'transparent',
+                      border: selectedSegments.includes(segment.id) ? '1px solid #bee3f8' : '1px solid transparent',
+                      transition: 'all 0.1s',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSegments.includes(segment.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSegments(prev => [...prev, segment.id]);
+                        } else {
+                          setSelectedSegments(prev => prev.filter(id => id !== segment.id));
+                        }
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: '#3182ce' }}
+                    />
+                    <span style={{ fontWeight: 500, fontSize: '14px' }}>{segment.name}</span>
+                    <span style={{
+                      marginLeft: 'auto',
+                      fontSize: '12px',
+                      color: '#718096',
+                      background: '#edf2f7',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
                     }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedSegments.includes(segment.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedSegments(prev => [...prev, segment.id]);
-                          } else {
-                            setSelectedSegments(prev => prev.filter(id => id !== segment.id));
-                          }
-                        }}
-                      />
-                      <span>{segment.name}</span>
-                      <span style={{ color: '#718096', fontSize: '12px' }}>({segment._count?.members || 0} contacts)</span>
-                    </label>
-                  ))
-                )}
-              </div>
+                      {(segment as any)._count?.members || 0} contacts
+                    </span>
+                  </label>
+                ))
+              )}
             </div>
-            <div className="form-group">
-              <label>Use Template (Optional)</label>
+            {selectedSegments.length > 0 && (
+              <p style={{ fontSize: '12px', color: '#3182ce', marginTop: '6px' }}>
+                ✓ {selectedSegments.length} segment{selectedSegments.length > 1 ? 's' : ''} selected
+              </p>
+            )}
+
+            {/* PSA Opt-In Segment */}
+            {campaignType === 'PSA' && (
+              <>
+                <div style={{ marginTop: '16px' }}>
+                  <label style={{ fontWeight: 600, fontSize: '14px', display: 'block', marginBottom: '6px' }}>
+                    Opt-In Destination Segment * <span style={{ fontWeight: 400, color: '#718096', fontSize: '12px' }}>(Where "Y" repliers are moved)</span>
+                  </label>
+                  <select
+                    value={psaOptInSegmentId}
+                    onChange={(e) => setPsaOptInSegmentId(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
+                  >
+                    <option value="">-- Select a warm marketing segment --</option>
+                    {segments
+                      .filter(s => !selectedSegments.includes(s.id))
+                      .map(segment => (
+                        <option key={segment.id} value={segment.id}>
+                          {segment.name} ({(segment as any)._count?.members || 0} contacts)
+                        </option>
+                      ))}
+                  </select>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
+                    Contacts who reply Y will be added to this segment and receive a 24-hour cooldown before marketing messages begin.
+                  </p>
+                </div>
+                <div style={{ marginTop: '12px' }}>
+                  <label style={{ fontWeight: 600, fontSize: '14px', display: 'block', marginBottom: '6px' }}>
+                    Opt-In Cooldown (hours)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={72}
+                      value={psaOptInCooldownHours}
+                      onChange={(e) => setPsaOptInCooldownHours(Number(e.target.value))}
+                      style={{ width: '90px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
+                    />
+                    <span style={{ fontSize: '13px', color: '#718096' }}>
+                      hours before first marketing message (default: 24h, recommended: 24–48h)
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── STEP 4: Message ── */}
+            <div style={divider} />
+            <p style={sectionLabel}>Step 4 — Message Content</p>
+
+            {/* Template picker */}
+            <div className="form-group" style={{ marginBottom: '12px' }}>
+              <label style={{ fontWeight: 600, fontSize: '14px' }}>
+                Use Template <span style={{ fontWeight: 400, color: '#718096' }}>(Optional)</span>
+              </label>
               <select
                 value={selectedTemplate}
                 onChange={(e) => handleTemplateSelect(e.target.value)}
-                style={{ marginBottom: '8px' }}
+                style={{ marginTop: '6px' }}
               >
                 <option value="">-- Write custom message or select template --</option>
                 {Object.entries(groupedTemplates).map(([category, categoryTemplates]) => (
                   <optgroup key={category} label={category.replace(/_/g, ' ')}>
                     {categoryTemplates.map(template => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                      </option>
+                      <option key={template.id} value={template.id}>{template.name}</option>
                     ))}
                   </optgroup>
                 ))}
               </select>
-              {templates.length === 0 && (
-                <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                  No templates found. Create templates in the Templates page.
-                </p>
-              )}
             </div>
-            <div className="form-group">
-              <label>Message *</label>
+
+            {/* Message textarea */}
+            <div className="form-group" style={{ marginBottom: '8px' }}>
+              <label style={{ fontWeight: 600, fontSize: '14px' }}>Message *</label>
               <textarea
                 value={messageBody}
                 onChange={(e) => setMessageBody(e.target.value)}
-                placeholder="Hi {{firstName}}, this is a message from our team..."
+                placeholder={
+                  campaignType === 'PSA'
+                    ? 'IMPORTANT: [Your business] is offering free AC safety inspections this summer. Reply Y to receive updates and schedule yours. Reply STOP to opt out.'
+                    : 'Hi {{firstName}}, this is {{agentName}} from {{companyName}}...'
+                }
+                rows={5}
+                style={{ marginTop: '6px', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.5' }}
               />
-              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                Available variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{phone}}'}, {'{{companyName}}'}, {'{{agentName}}'}
+              <SmsCounter body={messageBody} />
+              <p style={{ fontSize: '12px', color: '#a0aec0', marginTop: '2px' }}>
+                Variables: {'{{firstName}}'} · {'{{lastName}}'} · {'{{phone}}'} · {'{{companyName}}'} · {'{{agentName}}'}
               </p>
             </div>
-            <div className="form-group">
-              <label>Image URL (Optional - for MMS)</label>
+
+            {/* AI Improve */}
+            <div className="form-group" style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={useAi}
+                    onChange={(e) => setUseAi(e.target.checked)}
+                    style={{ width: '15px', height: '15px', accentColor: '#3182ce' }}
+                  />
+                  ✨ AI-improve this message
+                </label>
+                {useAi && (
+                  <>
+                    <select
+                      value={aiGoal}
+                      onChange={(e) => setAiGoal(e.target.value as AiGoal)}
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '13px' }}
+                    >
+                      <option value="higher_reply_rate">Higher Reply Rate</option>
+                      <option value="more_compliant">More Compliant</option>
+                      <option value="shorter">Shorter</option>
+                      <option value="friendlier">Friendlier</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-small"
+                      onClick={handleAiImprove}
+                      disabled={aiLoading || !messageBody.trim()}
+                    >
+                      {aiLoading ? '⏳ Improving...' : 'Get Suggestion'}
+                    </button>
+                  </>
+                )}
+              </div>
+              {improvedMessage && (
+                <div style={{ marginTop: '10px', padding: '12px', background: '#f0fff4', borderRadius: '8px', border: '1px solid #9ae6b4' }}>
+                  <strong style={{ fontSize: '13px' }}>✨ AI Suggestion:</strong>
+                  <p style={{ marginTop: '6px', fontSize: '14px', whiteSpace: 'pre-wrap' }}>{improvedMessage}</p>
+                  <button
+                    type="button"
+                    className="btn btn-small btn-success"
+                    style={{ marginTop: '8px' }}
+                    onClick={() => { setMessageBody(improvedMessage); setImprovedMessage(''); }}
+                  >
+                    Use This Message
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── STEP 5: MMS / Image ── */}
+            <div style={divider} />
+            <p style={sectionLabel}>Step 5 — MMS Image <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(Optional)</span></p>
+            <div className="form-group" style={{ marginBottom: '8px' }}>
               <input
                 type="url"
                 value={imageUrl}
@@ -435,90 +718,44 @@ export default function Campaigns() {
                 placeholder="https://example.com/image.jpg"
               />
               <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                Paste a publicly accessible image URL. Tip: Upload images to <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer">imgbb.com</a> for free hosting.
+                Paste a public image URL. Free hosting: <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer">imgbb.com</a>
               </p>
               {imageUrl && (
                 <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <img src={imageUrl} alt="Preview" style={{ maxWidth: '150px', maxHeight: '100px', borderRadius: '4px' }} />
-                  <button type="button" className="btn btn-small btn-secondary" onClick={() => setImageUrl('')}>Clear</button>
+                  <img src={imageUrl} alt="Preview" style={{ maxWidth: '120px', maxHeight: '90px', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                  <button type="button" className="btn btn-small btn-secondary" onClick={() => setImageUrl('')}>✕ Clear</button>
                 </div>
               )}
             </div>
-            <div className="form-group">
-              <div className="checkbox-group">
-                <input
-                  type="checkbox"
-                  id="sendAsMms"
-                  checked={sendAsMms}
-                  onChange={(e) => setSendAsMms(e.target.checked)}
-                />
-                <label htmlFor="sendAsMms" style={{ marginBottom: 0 }}>Send as MMS</label>
-              </div>
-              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                MMS supports up to 1,600 characters in a single message. Without this, long messages are split into multiple SMS segments.
-              </p>
-            </div>
-            <div className="form-group">
-              <div className="checkbox-group">
-                <input
-                  type="checkbox"
-                  id="useAi"
-                  checked={useAi}
-                  onChange={(e) => setUseAi(e.target.checked)}
-                />
-                <label htmlFor="useAi" style={{ marginBottom: 0 }}>Use AI to improve message</label>
-              </div>
-            </div>
-            {useAi && (
-              <div className="form-group">
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                  <select
-                    value={aiGoal}
-                    onChange={(e) => setAiGoal(e.target.value as AiGoal)}
-                    style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
-                  >
-                    <option value="higher_reply_rate">Higher Reply Rate</option>
-                    <option value="more_compliant">More Compliant</option>
-                    <option value="shorter">Shorter</option>
-                    <option value="friendlier">Friendlier</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-small"
-                    onClick={handleAiImprove}
-                    disabled={aiLoading || !messageBody.trim()}
-                  >
-                    {aiLoading ? 'Improving...' : 'Get AI Suggestion'}
-                  </button>
-                </div>
-                {improvedMessage && (
-                  <div style={{ marginTop: '10px', padding: '10px', background: '#f0fff4', borderRadius: '6px', border: '1px solid #9ae6b4' }}>
-                    <strong>AI Improved:</strong>
-                    <p style={{ marginTop: '4px' }}>{improvedMessage}</p>
-                    <button
-                      type="button"
-                      className="btn btn-small btn-success"
-                      style={{ marginTop: '8px' }}
-                      onClick={() => {
-                        setMessageBody(improvedMessage);
-                        setImprovedMessage('');
-                      }}
-                    >
-                      Use This
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', marginBottom: '4px' }}>
+              <input
+                type="checkbox"
+                checked={sendAsMms}
+                onChange={(e) => setSendAsMms(e.target.checked)}
+                style={{ width: '15px', height: '15px', accentColor: '#3182ce' }}
+              />
+              <span>Send as MMS</span>
+              <span style={{ fontSize: '12px', color: '#718096' }}>(supports up to 1,600 characters in one message)</span>
+            </label>
+
+            {/* ── Action buttons ── */}
+            <div style={{ ...divider, marginTop: '24px' }} />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
               <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
               <button className="btn btn-secondary" onClick={() => handleCreateCampaign(false)}>Save as Draft</button>
-              <button className="btn btn-primary" onClick={() => handleCreateCampaign(true)}>Review & Send</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => handleCreateCampaign(true)}
+                style={{ minWidth: '140px' }}
+              >
+                Review &amp; Send →
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── EDIT STEP MODAL ───────────────────────────────────────────────── */}
       {showEditStepModal && selectedCampaign && (
         <div className="modal-overlay" onClick={() => setShowEditStepModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
@@ -538,9 +775,7 @@ export default function Campaigns() {
                 style={{ fontFamily: 'inherit', fontSize: '14px' }}
                 placeholder="Enter your message..."
               />
-              <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                {editStepBody.length} characters · IntelliSend will automatically append "Reply STOP to unsubscribe" if not already present.
-              </p>
+              <SmsCounter body={editStepBody} />
             </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowEditStepModal(false)}>Cancel</button>
@@ -556,6 +791,7 @@ export default function Campaigns() {
         </div>
       )}
 
+      {/* ── COMPLIANCE MODAL ─────────────────────────────────────────────── */}
       {showComplianceModal && selectedCampaign && (
         <div className="modal-overlay" onClick={() => setShowComplianceModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
@@ -575,65 +811,47 @@ export default function Campaigns() {
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
-                <input
-                  type="checkbox"
-                  id="consentVerified"
-                  checked={compliance.consentVerified}
-                  onChange={(e) => setCompliance(prev => ({ ...prev, consentVerified: e.target.checked }))}
-                />
-                <label htmlFor="consentVerified" style={{ marginBottom: 0 }}>
-                  <strong>Prior Express Consent Verified</strong>
-                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                    I confirm that all recipients have provided prior express written consent to receive SMS marketing messages, per TCPA requirements.
-                  </p>
-                </label>
-              </div>
-
-              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
-                <input
-                  type="checkbox"
-                  id="optOutIncluded"
-                  checked={compliance.optOutIncluded}
-                  onChange={(e) => setCompliance(prev => ({ ...prev, optOutIncluded: e.target.checked }))}
-                />
-                <label htmlFor="optOutIncluded" style={{ marginBottom: 0 }}>
-                  <strong>Opt-Out Instructions Included</strong>
-                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                    The message includes clear opt-out instructions (e.g., "Reply STOP to unsubscribe"). Note: IntelliSend automatically appends this.
-                  </p>
-                </label>
-              </div>
-
-              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
-                <input
-                  type="checkbox"
-                  id="quietHoursOk"
-                  checked={compliance.quietHoursOk}
-                  onChange={(e) => setCompliance(prev => ({ ...prev, quietHoursOk: e.target.checked }))}
-                />
-                <label htmlFor="quietHoursOk" style={{ marginBottom: 0 }}>
-                  <strong>Quiet Hours Respected</strong>
-                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                    This campaign will not send messages before 8am or after 9pm in the recipient's local time zone (TCPA requirement).
-                  </p>
-                </label>
-              </div>
-
-              <div className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
-                <input
-                  type="checkbox"
-                  id="contentReviewed"
-                  checked={compliance.contentReviewed}
-                  onChange={(e) => setCompliance(prev => ({ ...prev, contentReviewed: e.target.checked }))}
-                />
-                <label htmlFor="contentReviewed" style={{ marginBottom: 0 }}>
-                  <strong>Message Content Reviewed</strong>
-                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>
-                    I have reviewed the message content and confirm it is appropriate, not deceptive, and complies with carrier guidelines.
-                  </p>
-                </label>
-              </div>
+              {[
+                {
+                  id: 'consentVerified',
+                  key: 'consentVerified' as keyof ComplianceChecklist,
+                  label: 'Prior Express Consent Verified',
+                  desc: (selectedCampaign as any).type === 'PSA'
+                    ? 'PSA campaigns do not require prior consent — recipients are cold contacts receiving a public service announcement.'
+                    : 'I confirm that all recipients have provided prior express written consent to receive SMS marketing messages, per TCPA requirements.',
+                },
+                {
+                  id: 'optOutIncluded',
+                  key: 'optOutIncluded' as keyof ComplianceChecklist,
+                  label: 'Opt-Out Instructions Included',
+                  desc: 'The message includes clear opt-out instructions. Note: IntelliSend automatically appends "Reply STOP to unsubscribe".',
+                },
+                {
+                  id: 'quietHoursOk',
+                  key: 'quietHoursOk' as keyof ComplianceChecklist,
+                  label: 'Quiet Hours Respected',
+                  desc: 'IntelliSend will not send messages before 8 AM or after 9 PM in each recipient\'s local time zone (TCPA requirement).',
+                },
+                {
+                  id: 'contentReviewed',
+                  key: 'contentReviewed' as keyof ComplianceChecklist,
+                  label: 'Message Content Reviewed',
+                  desc: 'I have reviewed the message content and confirm it is appropriate, not deceptive, and complies with carrier guidelines.',
+                },
+              ].map(item => (
+                <div key={item.id} className="form-group checkbox-group" style={{ marginBottom: '12px' }}>
+                  <input
+                    type="checkbox"
+                    id={item.id}
+                    checked={compliance[item.key] as boolean}
+                    onChange={(e) => setCompliance(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                  />
+                  <label htmlFor={item.id} style={{ marginBottom: 0 }}>
+                    <strong>{item.label}</strong>
+                    <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>{item.desc}</p>
+                  </label>
+                </div>
+              ))}
             </div>
 
             <div className="form-group">
