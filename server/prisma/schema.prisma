@@ -49,9 +49,14 @@ model TenantSettings {
   sendJitterMinMs     Int      @default(1000)
   sendJitterMaxMs     Int      @default(5000)
   notificationEmail   String?
+  
+  // Global Frequency Cap settings (Feature 5)
+  // These cap system-initiated messages only. AI conversation replies are always exempt.
+  globalFreqCapDaily  Int @default(2)  // Max campaign/sequence messages per contact per day
+  globalFreqCapWeekly Int @default(3)  // Max campaign/sequence messages per contact per week
+  
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-
   tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   defaultFromNumber TenantNumber? @relation(fields: [defaultFromNumberId], references: [id], onDelete: SetNull)
 }
@@ -152,6 +157,13 @@ model Contact {
   lastRepliedAt    DateTime?
   aiAgentEnabled   Boolean       @default(true)
   stLastCheckedAt  DateTime?
+  
+  // Phone validation (Feature 2: HLR Number Validation)
+  phoneLineType    String?   // 'mobile', 'voip', 'landline', 'unknown'
+  phoneValidatedAt DateTime? // When HLR validation was last run
+  
+  // PSA opt-in cooldown (Feature 4: 3-Phase PSA Workflow Engine)
+  optInCooldownUntil DateTime? // Block marketing sends until this time after opt-in
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -255,6 +267,7 @@ model SegmentMember {
 enum CampaignType {
   BLAST
   DRIP
+  PSA // Public Service Announcement: cold outreach with automatic opt-in capture and warm segment promotion
 }
 
 enum CampaignStatus {
@@ -280,6 +293,10 @@ model Campaign {
   updatedAt   DateTime       @updatedAt
   
   excludedTagIds String[] @default([])
+  
+  // PSA Campaign fields (Feature 4: 3-Phase PSA Workflow Engine)
+  psaOptInSegmentId     String?  // Segment to auto-add contacts to when they reply Y
+  psaOptInCooldownHours Int      @default(24) // Hours to wait before first marketing message after opt-in
   
   complianceCheckedAt     DateTime?
   complianceCheckedBy     String?

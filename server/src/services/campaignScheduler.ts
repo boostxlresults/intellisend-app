@@ -5,6 +5,8 @@ import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 import { queueCampaignMessages } from './queueDispatcher';
 import { normalizePhone } from '../utils/phoneNormalize';
 import { sendDuplicateAlertEmail } from './emailNotifications';
+import { filterSmsCapableContacts } from './phoneValidator';
+import { isContactInOptInCooldown } from './psaOptInWorkflow';
 
 const SCHEDULER_INTERVAL_MS = 60000;
 
@@ -177,6 +179,27 @@ async function processSingleCampaign(campaign: any, now: Date) {
     });
     return;
   }
+
+  // --- HLR NUMBER VALIDATION (Feature 2) ---
+  // Filter out landlines and disconnected numbers before queuing.
+  // This prevents hard bounces that damage Twilio sender reputation and trigger carrier spam filters.
+  // Results are cached on the Contact record for 90 days to minimize Twilio Lookup API costs.
+  const allContactsForValidation = allSegmentMembers.map(m => ({
+    id: m.contact.id,
+    phone: normalizePhone(m.contact.phone),
+  }));
+  const { valid: validContacts, landlines: landlineContacts } = await filterSmsCapableContacts(
+    campaign.tenantId,
+    allContactsForValidation
+  );
+  if (landlineContacts.length > 0) {
+    console.log(`[Scheduler] HLR: Blocked ${landlineContacts.length} landlines for campaign ${campaign.id}`);
+  }
+  const validPhoneSet = new Set(validContacts.map(c => c.phone));
+  // Filter allSegmentMembers to only include validated mobile/voip numbers
+  const validatedSegmentMembers = allSegmentMembers.filter(m =>
+    validPhoneSet.has(normalizePhone(m.contact.phone))
+  );
   
   const existingSentCount = await prisma.message.count({
     where: {
@@ -191,7 +214,7 @@ async function processSingleCampaign(campaign: any, now: Date) {
     },
   });
   const totalAlreadyProcessed = existingSentCount + existingQueuedCount;
-  const uniquePhoneCount = new Set(allSegmentMembers.map(m => normalizePhone(m.contact.phone))).size;
+  const uniquePhoneCount = new Set(validatedSegmentMembers.map(m => normalizePhone(m.contact.phone))).size;
   const maxAllowedMessages = uniquePhoneCount;
   
   if (totalAlreadyProcessed >= maxAllowedMessages) {
@@ -302,7 +325,7 @@ async function processSingleCampaign(campaign: any, now: Date) {
   
   const companyName = campaign.tenant.publicName || campaign.tenant.name || '';
   
-  for (const member of allSegmentMembers) {
+  for (const member of validatedSegmentMembers) {
     const contact = member.contact;
     
     try {
@@ -324,6 +347,18 @@ async function processSingleCampaign(campaign: any, now: Date) {
         suppressedCount++;
         continue;
       }
+
+      // --- PSA OPT-IN COOLDOWN CHECK (Feature 4) ---
+      // Block marketing sends to contacts who just opted in via PSA.
+      // The 24-hour cooldown ensures consent is fully established before marketing begins.
+      if (campaign.type !== 'PSA') {
+        const inCooldown = await isContactInOptInCooldown(contact.id);
+        if (inCooldown) {
+          skippedCount++;
+          console.log(`[Scheduler] Contact ${contact.phone} in PSA opt-in cooldown, skipping for campaign ${campaign.id}`);
+          continue;
+        }
+      }
       
       // Personalize the AI-improved template for this contact (no AI call per contact)
       let messageBody = campaignMessageTemplate
@@ -332,15 +367,28 @@ async function processSingleCampaign(campaign: any, now: Date) {
         .replace(/{{phone}}/g, contact.phone)
         .replace(/{{companyName}}/g, companyName);
       
-      // Auto-inject STOP footer if not already present — ensures TCPA compliance
-      // on every campaign blast regardless of what the template contains
+      // --- PERIODIC OPT-OUT REMINDER INJECTION (Feature 3) ---
+      // CTIA guidelines require opt-out reminders to be sent periodically to ongoing subscribers.
+      // Standard: every 5th message. We count all SENT messages to this phone from this tenant.
+      // On the 5th, 10th, 15th, etc. message, we append a more prominent opt-out reminder.
+      // On all other messages, we append the standard STOP footer.
+      const sentCountToContact = await prisma.messageEvent.count({
+        where: { tenantId: campaign.tenantId, phone: contactNormalizedPhone, eventType: 'SENT' },
+      });
+      const isPeriodicReminderMessage = sentCountToContact > 0 && (sentCountToContact + 1) % 5 === 0;
+      
       const lowerBody = messageBody.toLowerCase();
       const hasStopFooter = lowerBody.includes('reply stop') ||
                             lowerBody.includes('text stop') ||
                             lowerBody.includes('stop to unsubscribe') ||
                             lowerBody.includes('unsubscribe');
       if (!hasStopFooter) {
-        messageBody = messageBody + '\n\nReply STOP to unsubscribe.';
+        if (isPeriodicReminderMessage) {
+          // Prominent periodic reminder (CTIA compliance)
+          messageBody = messageBody + '\n\nReminder: Reply STOP at any time to unsubscribe from all messages. Reply HELP for help.';
+        } else {
+          messageBody = messageBody + '\n\nReply STOP to unsubscribe.';
+        }
       }
       
       messagesToQueue.push({

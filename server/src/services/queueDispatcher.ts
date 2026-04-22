@@ -3,6 +3,8 @@ import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
 import { recordUsage } from '../routes/billing';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 import { sendDuplicateAlertEmail } from './emailNotifications';
+import { isContactInQuietHours } from '../utils/contactTimezone';
+import { buildOptimizedSendSchedule } from './sendTimeOptimizer';
 
 const DISPATCHER_INTERVAL_MS = 5000;
 const MAX_BATCH_SIZE = 50;
@@ -291,6 +293,77 @@ async function processOutboundQueue() {
             continue;
           }
 
+          // --- PER-CONTACT QUIET HOURS CHECK (Feature 1) ---
+          // Check the contact's LOCAL timezone derived from their area code, not just the tenant timezone.
+          // This ensures TCPA compliance for contacts in stricter-law states (FL 8PM, CT 8PM, TX 9PM).
+          // AI conversation replies (conversationId set, no campaignId) are EXEMPT.
+          if (queueItem.campaignId && !queueItem.conversationId) {
+            const contactQuietCheck = isContactInQuietHours(queueItem.phone, sendContext?.timezone || 'America/Phoenix');
+            if (contactQuietCheck.blocked) {
+              const deferTime = contactQuietCheck.nextAllowedAt || new Date(Date.now() + 8 * 60 * 60 * 1000);
+              await prisma.outboundMessageQueue.update({
+                where: { id: queueItem.id },
+                data: { status: 'PENDING', processAfter: deferTime },
+              });
+              await prisma.messageEvent.create({
+                data: {
+                  tenantId,
+                  contactId: queueItem.contactId,
+                  phone: queueItem.phone,
+                  eventType: 'QUIET_HOURS_BLOCKED',
+                  campaignId: queueItem.campaignId,
+                  errorMessage: contactQuietCheck.reason,
+                },
+              });
+              console.log(`[Dispatcher] Per-contact quiet hours blocked ${queueItem.phone}: ${contactQuietCheck.reason}`);
+              continue;
+            }
+          }
+
+          // --- GLOBAL FREQUENCY CAP CHECK (Feature 5) ---
+          // Applies only to system-initiated campaign/sequence messages.
+          // AI conversation replies and transactional messages (opt-in/opt-out confirmations) are EXEMPT.
+          // Exempt signals: conversationId present with no campaignId = AI reply.
+          const isSystemInitiated = !!queueItem.campaignId || !!queueItem.sequenceEnrollmentStepId;
+          if (isSystemInitiated) {
+            const tenantSettings = await prisma.tenantSettings.findUnique({
+              where: { tenantId },
+              select: { globalFreqCapWeekly: true, globalFreqCapDaily: true },
+            });
+            const weeklyCapLimit = (tenantSettings as any)?.globalFreqCapWeekly ?? 3;
+            const dailyCapLimit = (tenantSettings as any)?.globalFreqCapDaily ?? 2;
+            const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const [weeklyCount, dailyCount] = await Promise.all([
+              prisma.messageEvent.count({
+                where: { tenantId, phone: queueItem.phone, eventType: 'SENT', createdAt: { gte: oneWeekAgo } },
+              }),
+              prisma.messageEvent.count({
+                where: { tenantId, phone: queueItem.phone, eventType: 'SENT', createdAt: { gte: oneDayAgo } },
+              }),
+            ]);
+            if (weeklyCount >= weeklyCapLimit || dailyCount >= dailyCapLimit) {
+              // Defer to next week window instead of dropping
+              const nextWindow = new Date(oneWeekAgo.getTime() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000);
+              await prisma.outboundMessageQueue.update({
+                where: { id: queueItem.id },
+                data: { status: 'PENDING', processAfter: nextWindow },
+              });
+              await prisma.messageEvent.create({
+                data: {
+                  tenantId,
+                  contactId: queueItem.contactId,
+                  phone: queueItem.phone,
+                  eventType: 'RATE_LIMITED',
+                  campaignId: queueItem.campaignId,
+                  errorMessage: `Global frequency cap: ${weeklyCount}/${weeklyCapLimit} weekly, ${dailyCount}/${dailyCapLimit} daily`,
+                },
+              });
+              console.log(`[Dispatcher] Frequency cap deferred ${queueItem.phone}: ${weeklyCount}/${weeklyCapLimit} weekly`);
+              continue;
+            }
+          }
+
           // Skip rate limit for conversation replies (AI agent responses, direct replies)
           // Only apply rate limit to campaign/sequence messages
           const isConversationReply = !!queueItem.conversationId && !queueItem.campaignId && !queueItem.sequenceEnrollmentStepId;
@@ -546,9 +619,39 @@ export async function queueCampaignMessages(
     return { queued: 0 };
   }
 
+  // --- SEND-TIME OPTIMIZATION (Feature 6) ---
+  // Build a personalized send schedule for each contact based on their reply history.
+  // Contacts with engagement history get their message at their historically active hour.
+  // Contacts with no history get the default send hour (10 AM local time).
+  // This replaces the flat sequential delay with intelligent per-contact scheduling.
+  const tenantSendContext = await getTenantSendContext(tenantId);
+  const fallbackTz = tenantSendContext?.timezone || 'America/Phoenix';
+  
+  let optimizedSchedule: Map<string, Date> | null = null;
+  try {
+    optimizedSchedule = await buildOptimizedSendSchedule(
+      tenantId,
+      deduplicatedMessages.map(m => ({ id: m.contactId, phone: m.phone })),
+      fallbackTz,
+      sendSettings.sendJitterMinMs,
+      sendSettings.sendJitterMaxMs
+    );
+    console.log(`[SendTimeOptimizer] Built optimized schedule for ${deduplicatedMessages.length} contacts in campaign ${campaignId}`);
+  } catch (err: any) {
+    console.error(`[SendTimeOptimizer] Failed to build schedule, falling back to sequential: ${err.message}`);
+  }
+
   const queueItems = deduplicatedMessages.map((msg, index) => {
-    const jitter = getRandomJitter(sendSettings.sendJitterMinMs, sendSettings.sendJitterMaxMs);
-    const processAfter = new Date(Date.now() + index * delayBetweenMessages + jitter);
+    let processAfter: Date;
+    
+    if (optimizedSchedule && optimizedSchedule.has(msg.contactId)) {
+      // Use the contact's personalized optimal send time
+      processAfter = optimizedSchedule.get(msg.contactId)!;
+    } else {
+      // Fallback: sequential delay with jitter
+      const jitter = getRandomJitter(sendSettings.sendJitterMinMs, sendSettings.sendJitterMaxMs);
+      processAfter = new Date(Date.now() + index * delayBetweenMessages + jitter);
+    }
 
     return {
       tenantId,

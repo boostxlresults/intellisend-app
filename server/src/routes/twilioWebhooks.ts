@@ -6,6 +6,7 @@ import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
 import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
 import { normalizePhone } from '../utils/phoneNormalize';
+import { processPsaOptIn } from '../services/psaOptInWorkflow';
 
 const router = Router();
 
@@ -254,6 +255,15 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       });
       
       console.log(`Contact ${From} opted IN for tenant ${tenantId} - tagged, ConsentRecord created, confirmation SMS queued`);
+      
+      // --- PSA WORKFLOW: Auto-promote to warm segment (Feature 4) ---
+      // Non-blocking: check if this opt-in was triggered by a PSA campaign
+      // and automatically move the contact to the configured warm marketing segment.
+      processPsaOptIn(tenantId, contact.id, From).then(result => {
+        if (result.promoted) {
+          console.log(`[PSA Workflow] ${From} promoted to warm segment "${result.segmentName}" (${result.cooldownHours}h cooldown)`);
+        }
+      }).catch(err => console.error('[PSA Workflow] Non-blocking error:', err));
     }
     
     await prisma.conversation.update({
