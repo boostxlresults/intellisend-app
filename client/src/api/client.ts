@@ -159,6 +159,11 @@ export interface TenantSettings {
   sendJitterMinMs: number;
   sendJitterMaxMs: number;
   notificationEmail?: string | null;
+  globalFreqCapDaily?: number;
+  globalFreqCapWeekly?: number;
+  stl360Enabled?: boolean;
+  stl360ApiUrl?: string | null;
+  stl360TenantId?: string | null;
 }
 
 export interface Tag {

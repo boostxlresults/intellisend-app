@@ -170,6 +170,11 @@ export default function Settings() {
         sendJitterMinMs: parseInt(formData.get('sendJitterMinMs') as string) || 1000,
         sendJitterMaxMs: parseInt(formData.get('sendJitterMaxMs') as string) || 5000,
         notificationEmail: formData.get('notificationEmail') as string || null,
+        globalFreqCapDaily: parseInt(formData.get('globalFreqCapDaily') as string) || 2,
+        globalFreqCapWeekly: parseInt(formData.get('globalFreqCapWeekly') as string) || 3,
+        stl360Enabled: formData.get('stl360Enabled') === 'on',
+        stl360ApiUrl: formData.get('stl360ApiUrl') as string || null,
+        stl360TenantId: formData.get('stl360TenantId') as string || null,
       });
       const refreshedSettings = await api.getTenantSettings(selectedTenant.id);
       setTenantSettings(refreshedSettings);
@@ -698,12 +703,48 @@ export default function Settings() {
                   ))}
                 </select>
               </div>
+               {/* Frequency Cap Settings */}
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                <h4 style={{ marginBottom: '4px', color: '#2d3748', fontSize: '14px', fontWeight: 600 }}>Global Frequency Cap</h4>
+                <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px' }}>Limits system-initiated messages per contact. AI conversation replies are always exempt.</p>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>Max Messages / Day</label>
+                    <input type="number" name="globalFreqCapDaily" defaultValue={(tenantSettings as any)?.globalFreqCapDaily ?? 2} min="1" max="20" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }} />
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>Max Messages / Week</label>
+                    <input type="number" name="globalFreqCapWeekly" defaultValue={(tenantSettings as any)?.globalFreqCapWeekly ?? 3} min="1" max="50" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* SpeedToLead360 Integration */}
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <h4 style={{ marginBottom: '4px', color: '#2d3748', fontSize: '14px', fontWeight: 600 }}>SpeedToLead360 Integration</h4>
+                <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px' }}>When enabled, positive-sentiment replies (booking requests, pricing questions, call-back requests) are automatically pushed as leads to SpeedToLead360.</p>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" name="stl360Enabled" defaultChecked={(tenantSettings as any)?.stl360Enabled || false} />
+                    <span style={{ fontWeight: 500 }}>Enable SpeedToLead360 Lead Push</span>
+                  </label>
+                </div>
+                <div className="form-group">
+                  <label>SpeedToLead360 API URL</label>
+                  <input type="url" name="stl360ApiUrl" defaultValue={(tenantSettings as any)?.stl360ApiUrl || ''} placeholder="https://api-production-831d.up.railway.app" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }} />
+                </div>
+                <div className="form-group">
+                  <label>SpeedToLead360 Tenant ID</label>
+                  <input type="text" name="stl360TenantId" defaultValue={(tenantSettings as any)?.stl360TenantId || ''} placeholder="Your STL360 tenant UUID" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }} />
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>Find your Tenant ID in SpeedToLead360 → Settings → Account.</p>
+                </div>
+              </div>
+
               <button type="submit" className="btn btn-primary" disabled={savingSettings}>
                 {savingSettings ? 'Saving...' : 'Save Settings'}
               </button>
             </form>
           </div>
-
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3>Phone Numbers</h3>

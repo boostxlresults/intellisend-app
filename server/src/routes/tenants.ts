@@ -126,6 +126,11 @@ router.post('/:tenantId/settings', async (req, res) => {
       sendJitterMinMs,
       sendJitterMaxMs,
       notificationEmail,
+      globalFreqCapDaily,
+      globalFreqCapWeekly,
+      stl360Enabled,
+      stl360ApiUrl,
+      stl360TenantId,
     } = req.body;
     
     const updateData: any = {};
@@ -184,7 +189,27 @@ router.post('/:tenantId/settings', async (req, res) => {
     if (notificationEmail !== undefined) {
       updateData.notificationEmail = notificationEmail || null;
     }
-    
+
+    if (globalFreqCapDaily !== undefined) {
+      updateData.globalFreqCapDaily = Math.max(1, Math.min(20, parseInt(globalFreqCapDaily)));
+    }
+
+    if (globalFreqCapWeekly !== undefined) {
+      updateData.globalFreqCapWeekly = Math.max(1, Math.min(50, parseInt(globalFreqCapWeekly)));
+    }
+
+    if (stl360Enabled !== undefined) {
+      updateData.stl360Enabled = Boolean(stl360Enabled);
+    }
+
+    if (stl360ApiUrl !== undefined) {
+      updateData.stl360ApiUrl = stl360ApiUrl || null;
+    }
+
+    if (stl360TenantId !== undefined) {
+      updateData.stl360TenantId = stl360TenantId || null;
+    }
+
     const settings = await prisma.tenantSettings.upsert({
       where: { tenantId },
       create: {

@@ -6,6 +6,7 @@ import { createBookingFromInboundSms, CreateBookingFromInboundSmsOptions } from 
 import { buildConversationSummary } from '../conversationSummary';
 import { getActivePersonaForTenant, getKnowledgeSnippetsForTenant } from '../../ai/aiEngine';
 import { sendReplyNotification } from '../emailNotifications';
+import { pushLeadToStl360 } from '../stl360Pusher';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -268,6 +269,24 @@ export async function handleInboundMessage(
       };
 
     case 'INFO_REQUEST':
+      // Push to STL360 — customer is asking a question (pricing, availability, service info)
+      void pushLeadToStl360(tenantId, {
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        phone: contact.phone,
+        email: contact.email || undefined,
+        address: contact.address || undefined,
+        city: contact.city || undefined,
+        state: contact.state || undefined,
+        zip: contact.zip || undefined,
+        intent: 'INFO_REQUEST',
+        intentReasoning: classification.reasoning,
+        messageSnippet: messageBody.substring(0, 200),
+        serviceType: session.stLastServiceType || undefined,
+        conversationId,
+        intellisendContactId: contact.id,
+        intellisendTenantId: tenantId,
+      });
       const lastBusinessMessage = conversationHistory.filter(m => m.role === 'business').pop()?.body || '';
       const infoResponse = await generateResponse(
         tenant,
@@ -285,6 +304,24 @@ export async function handleInboundMessage(
       };
 
     case 'INTERESTED':
+      // Push to STL360 — customer expressed general interest
+      void pushLeadToStl360(tenantId, {
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        phone: contact.phone,
+        email: contact.email || undefined,
+        address: contact.address || undefined,
+        city: contact.city || undefined,
+        state: contact.state || undefined,
+        zip: contact.zip || undefined,
+        intent: 'INTERESTED',
+        intentReasoning: classification.reasoning,
+        messageSnippet: messageBody.substring(0, 200),
+        serviceType: session.stLastServiceType || undefined,
+        conversationId,
+        intellisendContactId: contact.id,
+        intellisendTenantId: tenantId,
+      });
       // Customer is interested but just wants to chat - be informative, not pushy
       const interestedResponse = await generateResponse(
         tenant,
@@ -302,6 +339,24 @@ export async function handleInboundMessage(
       };
 
     case 'BOOK_YES':
+      // Push to STL360 — customer is ready to book (highest intent)
+      void pushLeadToStl360(tenantId, {
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        phone: contact.phone,
+        email: contact.email || undefined,
+        address: contact.address || session.confirmedAddress || undefined,
+        city: contact.city || undefined,
+        state: contact.state || undefined,
+        zip: contact.zip || undefined,
+        intent: 'BOOK_YES',
+        intentReasoning: classification.reasoning,
+        messageSnippet: messageBody.substring(0, 200),
+        serviceType: session.stLastServiceType || undefined,
+        conversationId,
+        intellisendContactId: contact.id,
+        intellisendTenantId: tenantId,
+      });
       return await handleBookingIntent(
         session,
         config,
@@ -312,6 +367,24 @@ export async function handleInboundMessage(
       );
 
     case 'CALL_ME':
+      // Push to STL360 — customer wants a human call back
+      void pushLeadToStl360(tenantId, {
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        phone: contact.phone,
+        email: contact.email || undefined,
+        address: contact.address || session.confirmedAddress || undefined,
+        city: contact.city || undefined,
+        state: contact.state || undefined,
+        zip: contact.zip || undefined,
+        intent: 'CALL_ME',
+        intentReasoning: classification.reasoning,
+        messageSnippet: messageBody.substring(0, 200),
+        serviceType: session.stLastServiceType || undefined,
+        conversationId,
+        intellisendContactId: contact.id,
+        intellisendTenantId: tenantId,
+      });
       return await handleCallMeRequest(session, config, tenant, contact, conversationHistory);
 
     case 'CONFIRM_YES':

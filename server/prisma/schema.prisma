@@ -54,7 +54,12 @@ model TenantSettings {
   // These cap system-initiated messages only. AI conversation replies are always exempt.
   globalFreqCapDaily  Int @default(2)  // Max campaign/sequence messages per contact per day
   globalFreqCapWeekly Int @default(3)  // Max campaign/sequence messages per contact per week
-  
+
+  // SpeedToLead360 Integration — positive-sentiment lead push
+  stl360Enabled       Boolean  @default(false)  // Master switch for STL360 push
+  stl360ApiUrl        String?                   // e.g. https://api-production-831d.up.railway.app
+  stl360TenantId      String?                   // STL360 tenant UUID to route leads to
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
