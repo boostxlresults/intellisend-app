@@ -42,6 +42,8 @@ export default function Settings() {
   const [stConfig, setStConfig] = useState<ServiceTitanConfig | null>(null);
   const [savingStConfig, setSavingStConfig] = useState(false);
   const [testingStConnection, setTestingStConnection] = useState(false);
+  const [testingStl360, setTestingStl360] = useState(false);
+  const [stl360TestResult, setStl360TestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [stForm, setStForm] = useState({
     tenantApiBaseUrl: '',
     serviceTitanTenantId: '',
@@ -192,6 +194,24 @@ export default function Settings() {
       alert('Failed to save settings: ' + message);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleTestStl360 = async () => {
+    if (!selectedTenant) return;
+    setTestingStl360(true);
+    setStl360TestResult(null);
+    try {
+      const res = await fetch(`/api/tenants/${selectedTenant.id}/settings/test-stl360`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      setStl360TestResult({ success: data.success, message: data.message || data.error || 'Unknown result' });
+    } catch (err: any) {
+      setStl360TestResult({ success: false, message: err.message || 'Network error' });
+    } finally {
+      setTestingStl360(false);
     }
   };
 
@@ -744,7 +764,23 @@ export default function Settings() {
                 <div className="form-group">
                   <label>SpeedToLead360 Tenant ID</label>
                   <input type="text" name="stl360TenantId" defaultValue={(tenantSettings as any)?.stl360TenantId || ''} placeholder="Your STL360 tenant UUID" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }} />
-                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>Find your Tenant ID in SpeedToLead360 → Settings → Account.</p>
+                  <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>Find your Tenant ID in SpeedToLead360 → Settings → Workspace ID (copy button).</p>
+                </div>
+                {/* Test Connection */}
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleTestStl360}
+                    disabled={testingStl360}
+                    style={{ padding: '8px 16px', background: testingStl360 ? '#a0aec0' : '#4299e1', color: '#fff', border: 'none', borderRadius: '6px', cursor: testingStl360 ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600 }}
+                  >
+                    {testingStl360 ? '⏳ Testing...' : '🔗 Test Connection'}
+                  </button>
+                  {stl360TestResult && (
+                    <span style={{ fontSize: '13px', color: stl360TestResult.success ? '#276749' : '#c53030', background: stl360TestResult.success ? '#c6f6d5' : '#fed7d7', padding: '6px 12px', borderRadius: '6px', fontWeight: 500 }}>
+                      {stl360TestResult.success ? '✓' : '✗'} {stl360TestResult.message}
+                    </span>
+                  )}
                 </div>
               </div>
 

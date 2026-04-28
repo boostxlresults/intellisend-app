@@ -541,9 +541,16 @@ const TEST_SCENARIOS: TestScenario[] = [
   },
   {
     name: 'Customer Interest',
-    description: 'Customer expresses interest in service',
+    description: 'Customer expresses soft interest (curious, not committing)',
     steps: [
-      { customerMessage: 'Yes I am interested in getting my AC serviced', expectedIntent: 'INTERESTED', description: 'Should detect customer interest' },
+      { customerMessage: 'That sounds interesting, tell me more about your AC service', expectedIntent: 'INTERESTED', description: 'Curious but not committing — should detect INTERESTED' },
+    ],
+  },
+  {
+    name: 'Strong Interest with Yes',
+    description: 'Customer says yes they want service — correctly classified as BOOK_YES',
+    steps: [
+      { customerMessage: 'Yes I am interested in getting my AC serviced', expectedIntent: 'BOOK_YES', description: '"Yes I am interested in getting X" = booking intent, not soft interest' },
     ],
   },
   {

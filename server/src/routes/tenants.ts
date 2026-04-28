@@ -345,4 +345,75 @@ router.delete('/:tenantId/numbers/:numberId', async (req, res) => {
   }
 });
 
+// STL360 Test Connection endpoint
+router.post('/:tenantId/settings/test-stl360', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: {
+        stl360Enabled: true,
+        stl360ApiUrl: true,
+        stl360TenantId: true,
+      },
+    });
+
+    if (!settings?.stl360ApiUrl || !settings?.stl360TenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'STL360 API URL and Tenant ID must be configured before testing.',
+      });
+    }
+
+    const endpoint = `${settings.stl360ApiUrl.replace(/\/$/, '')}/api/v1/webhooks/intellisend/${settings.stl360TenantId}`;
+
+    const testPayload = {
+      firstName: 'IntelliSend',
+      lastName: 'TestLead',
+      phone: '+15550000001',
+      email: 'test@intellisend.net',
+      intent: 'BOOK_YES',
+      intentReasoning: 'This is a test lead fired from IntelliSend Settings to verify the STL360 connection.',
+      messageSnippet: 'Yes I am interested in getting my AC serviced',
+      serviceType: 'HVAC',
+      conversationId: 'test-connection-' + Date.now(),
+      conversationUrl: 'https://app.intellisend.net/conversations/test',
+      campaignName: 'IntelliSend Connection Test',
+      intellisendContactId: 'test-contact-id',
+      intellisendTenantId: tenantId,
+    };
+
+    const axios = (await import('axios')).default;
+    const response = await axios.post(endpoint, testPayload, {
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Source': 'intellisend',
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `✓ Test lead successfully sent to SpeedToLead360! Check your STL360 leads list for "IntelliSend TestLead".`,
+      endpoint,
+      statusCode: response.status,
+    });
+  } catch (error: any) {
+    const statusCode = error?.response?.status;
+    const responseBody = error?.response?.data;
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Unknown error',
+      statusCode,
+      responseBody,
+      hint: statusCode === 404
+        ? 'The STL360 webhook endpoint was not found. Verify the API URL and Tenant ID are correct.'
+        : statusCode === 401 || statusCode === 403
+        ? 'Authentication failed. Check that the Tenant ID matches a valid STL360 tenant.'
+        : 'Check that the STL360 API URL is reachable and the Tenant ID is correct.',
+    });
+  }
+});
+
 export default router;
