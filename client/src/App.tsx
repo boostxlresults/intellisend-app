@@ -20,6 +20,7 @@ import Sequences from './pages/Sequences';
 import Templates from './pages/Templates';
 import Billing from './pages/Billing';
 import AITestConsole from './pages/AITestConsole';
+import JourneyBuilder from './pages/JourneyBuilder';
 
 function App() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -81,6 +82,7 @@ function App() {
           <NavLink to="/segments" className={({ isActive }) => isActive ? 'active' : ''}>Segments</NavLink>
           <NavLink to="/campaigns" className={({ isActive }) => isActive ? 'active' : ''}>Campaigns</NavLink>
           <NavLink to="/sequences" className={({ isActive }) => isActive ? 'active' : ''}>Sequences</NavLink>
+          <NavLink to="/journeys" className={({ isActive }) => isActive ? 'active' : ''}>Journeys</NavLink>
           <NavLink to="/templates" className={({ isActive }) => isActive ? 'active' : ''}>Templates</NavLink>
           <NavLink to="/conversations" className={location.pathname.startsWith('/conversations') ? 'active' : ''}>Conversations</NavLink>
           <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''}>Analytics</NavLink>
@@ -174,6 +176,7 @@ function App() {
               <Route path="/ai-test-console" element={<AITestConsole />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/twilio" element={<TwilioSetup />} />
+              <Route path="/journeys" element={<JourneyBuilder />} />
             </Routes>
           )}
         </div>

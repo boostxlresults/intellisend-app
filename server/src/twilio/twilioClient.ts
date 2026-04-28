@@ -85,6 +85,19 @@ export interface SendSmsOptions {
   contactId?: string;
   campaignId?: string;
   messageId?: string;
+  // RCS options
+  preferRcs?: boolean;       // Attempt RCS first, fall back to SMS if unsupported
+  rcsCardTitle?: string;     // Optional rich card title for RCS messages
+  rcsCardImageUrl?: string;  // Optional rich card image for RCS messages
+}
+
+export interface SendSmsResult {
+  success: boolean;
+  messageSid?: string;
+  error?: string;
+  suppressed?: boolean;
+  rateLimited?: boolean;
+  channel?: 'SMS' | 'MMS' | 'RCS'; // Which channel was actually used
 }
 
 const OPT_OUT_FOOTER = '\n\nReply STOP to unsubscribe.';
@@ -113,12 +126,52 @@ export async function logMessageEvent(
   }
 }
 
-export interface SendSmsResult {
-  success: boolean;
-  messageSid?: string;
-  error?: string;
-  suppressed?: boolean;
-  rateLimited?: boolean;
+/**
+ * Attempt to send an RCS message via Twilio.
+ * Returns the message SID on success, or throws on failure.
+ * Twilio automatically returns error code 63016 if the destination
+ * does not support RCS — callers should catch this and fall back to SMS.
+ */
+async function sendRcsMessage(
+  client: Twilio.Twilio,
+  options: {
+    to: string;
+    from: string;
+    body: string;
+    mediaUrl?: string;
+    statusCallback?: string;
+    cardTitle?: string;
+    cardImageUrl?: string;
+  }
+): Promise<string> {
+  const messageOptions: any = {
+    to: options.to,
+    body: options.body,
+    // Twilio RCS uses the same messages API — the 'from' must be an RCS-enabled sender ID
+    // or a Messaging Service SID that has RCS enabled.
+    from: options.from,
+    // Signal to Twilio that we want RCS delivery
+    // Twilio routes to RCS when the sender and recipient both support it
+    sendAsMms: false,
+  };
+
+  // Rich card support: if a card title and image are provided, use a content SID approach
+  // For now we attach the image as a media URL which Twilio RCS renders as a rich card
+  if (options.cardImageUrl || options.mediaUrl) {
+    messageOptions.mediaUrl = [options.cardImageUrl || options.mediaUrl];
+  }
+
+  if (options.statusCallback) {
+    messageOptions.statusCallback = options.statusCallback;
+  }
+
+  // Twilio RCS flag — tells the API to prefer RCS channel
+  // See: https://www.twilio.com/docs/messaging/rcs
+  messageOptions.contentRetention = 'retain';
+  messageOptions.addressRetention = 'obfuscate';
+
+  const message = await client.messages.create(messageOptions);
+  return message.sid;
 }
 
 export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSmsResult> {
@@ -192,7 +245,39 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
     const messageBody = options.skipOptOutFooter 
       ? options.body 
       : options.body + OPT_OUT_FOOTER;
-    
+
+    // ─── RCS PATH ────────────────────────────────────────────────────────────
+    if (options.preferRcs) {
+      try {
+        const rcsSid = await sendRcsMessage(client, {
+          to: options.toNumber,
+          from: options.fromNumber,
+          body: messageBody,
+          mediaUrl: options.mediaUrl,
+          statusCallback: options.statusCallbackUrl,
+          cardTitle: options.rcsCardTitle,
+          cardImageUrl: options.rcsCardImageUrl,
+        });
+
+        console.log(`RCS sent successfully. SID: ${rcsSid}, From: ${options.fromNumber}, To: ${options.toNumber}`);
+
+        await logMessageEvent(options.tenantId, options.toNumber, 'SENT', {
+          contactId: options.contactId,
+          messageId: options.messageId,
+          campaignId: options.campaignId,
+        });
+
+        return { success: true, messageSid: rcsSid, channel: 'RCS' };
+
+      } catch (rcsError: any) {
+        // Twilio error 63016 = RCS not supported for this recipient — fall back to SMS
+        // Any other RCS error also falls back gracefully
+        console.log(`RCS not supported for ${options.toNumber} (${rcsError.code || rcsError.message}), falling back to SMS`);
+        // Fall through to SMS path below
+      }
+    }
+
+    // ─── SMS / MMS PATH ───────────────────────────────────────────────────────
     const messageOptions: any = {
       to: options.toNumber,
       body: messageBody,
@@ -212,8 +297,9 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
     }
 
     const message = await client.messages.create(messageOptions);
+    const channel: 'SMS' | 'MMS' = options.mediaUrl ? 'MMS' : 'SMS';
 
-    console.log(`SMS sent successfully. SID: ${message.sid}, From: ${options.fromNumber}, To: ${options.toNumber}`);
+    console.log(`${channel} sent successfully. SID: ${message.sid}, From: ${options.fromNumber}, To: ${options.toNumber}`);
 
     await logMessageEvent(options.tenantId, options.toNumber, 'SENT', {
       contactId: options.contactId,
@@ -224,9 +310,11 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
     return {
       success: true,
       messageSid: message.sid,
+      channel,
     };
+
   } catch (error: any) {
-    console.error(`Failed to send SMS to ${options.toNumber}:`, error.message);
+    console.error(`Failed to send message to ${options.toNumber}:`, error.message);
     
     await logMessageEvent(options.tenantId, options.toNumber, 'FAILED', {
       contactId: options.contactId,

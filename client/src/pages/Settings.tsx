@@ -175,6 +175,8 @@ export default function Settings() {
         stl360Enabled: formData.get('stl360Enabled') === 'on',
         stl360ApiUrl: formData.get('stl360ApiUrl') as string || null,
         stl360TenantId: formData.get('stl360TenantId') as string || null,
+        rcsEnabled: formData.get('rcsEnabled') === 'on',
+        rcsFallbackToSms: formData.get('rcsFallbackToSms') === 'on',
       });
       const refreshedSettings = await api.getTenantSettings(selectedTenant.id);
       setTenantSettings(refreshedSettings);
@@ -737,6 +739,21 @@ export default function Settings() {
                   <label>SpeedToLead360 Tenant ID</label>
                   <input type="text" name="stl360TenantId" defaultValue={(tenantSettings as any)?.stl360TenantId || ''} placeholder="Your STL360 tenant UUID" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', width: '100%' }} />
                   <p style={{ fontSize: '12px', color: '#718096', marginTop: '4px' }}>Find your Tenant ID in SpeedToLead360 → Settings → Account.</p>
+                </div>
+              </div>
+
+              {/* RCS (Rich Communication Services) */}
+              <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
+                <h4 style={{ marginBottom: '4px', color: '#2d3748', fontSize: '14px', fontWeight: 600 }}>RCS Messaging (Rich Communication Services)</h4>
+                <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px' }}>When enabled, campaign messages are sent via RCS for supported Android devices — delivering your verified brand name, logo, read receipts, and rich media cards. Automatically falls back to SMS for unsupported devices at no extra cost.</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <input type="checkbox" name="rcsEnabled" defaultChecked={(tenantSettings as any)?.rcsEnabled || false} />
+                  <span style={{ fontWeight: 500 }}>Enable RCS for Campaign Messages</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="checkbox" name="rcsFallbackToSms" defaultChecked={(tenantSettings as any)?.rcsFallbackToSms !== false} />
+                  <span style={{ fontWeight: 500 }}>Auto-fallback to SMS if RCS unsupported</span>
+                  <span style={{ fontSize: '11px', color: '#718096', marginLeft: '4px' }}>(Recommended — keep enabled)</span>
                 </div>
               </div>
 

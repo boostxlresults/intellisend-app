@@ -20,6 +20,8 @@ interface SendSettings {
   sendRatePerMinute: number;
   sendJitterMinMs: number;
   sendJitterMaxMs: number;
+  rcsEnabled: boolean;
+  rcsFallbackToSms: boolean;
 }
 
 function getQuietHoursEndTime(timezone: string, quietHoursEndMinutes: number): Date {
@@ -70,6 +72,8 @@ async function getTenantSendSettings(tenantId: string): Promise<SendSettings> {
     sendRatePerMinute: settings?.sendRatePerMinute ?? 30,
     sendJitterMinMs: settings?.sendJitterMinMs ?? 1000,
     sendJitterMaxMs: settings?.sendJitterMaxMs ?? 5000,
+    rcsEnabled: (settings as any)?.rcsEnabled ?? false,
+    rcsFallbackToSms: (settings as any)?.rcsFallbackToSms ?? true,
   };
 }
 
@@ -374,6 +378,11 @@ async function processOutboundQueue() {
             effectiveMediaUrl = 'https://upload.wikimedia.org/wikipedia/commons/c/ca/1x1.png';
           }
           
+          // Determine if RCS should be attempted for this message.
+          // RCS is only used for system-initiated campaign messages when enabled by the tenant.
+          // AI conversation replies always use SMS for reliability.
+          const useRcs = sendSettings.rcsEnabled && !!queueItem.campaignId && !queueItem.conversationId;
+
           const smsResult = await sendSmsForTenant({
             tenantId,
             fromNumber: queueItem.fromNumber,
@@ -382,6 +391,7 @@ async function processOutboundQueue() {
             mediaUrl: effectiveMediaUrl,
             skipOptOutFooter: true, // Opt-out footer already added when queued
             skipRateLimitCheck: isConversationReply, // Don't rate limit active conversations
+            preferRcs: useRcs, // Attempt RCS first, auto-fallback to SMS if device doesn't support it
           });
 
           if (smsResult.rateLimited) {

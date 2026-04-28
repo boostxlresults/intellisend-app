@@ -164,6 +164,8 @@ export interface TenantSettings {
   stl360Enabled?: boolean;
   stl360ApiUrl?: string | null;
   stl360TenantId?: string | null;
+  rcsEnabled?: boolean;
+  rcsFallbackToSms?: boolean;
 }
 
 export interface Tag {

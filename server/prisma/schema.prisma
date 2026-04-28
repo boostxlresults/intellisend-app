@@ -60,6 +60,10 @@ model TenantSettings {
   stl360ApiUrl        String?                   // e.g. https://api-production-831d.up.railway.app
   stl360TenantId      String?                   // STL360 tenant UUID to route leads to
 
+  // RCS (Rich Communication Services) — verified sender, read receipts, rich cards
+  rcsEnabled          Boolean  @default(false)  // Enable RCS sending when device supports it
+  rcsFallbackToSms    Boolean  @default(true)   // Auto-fallback to SMS if RCS not supported
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -389,6 +393,8 @@ enum MessageDirection {
 
 enum MessageChannel {
   SMS
+  MMS
+  RCS
 }
 
 model Message {
