@@ -177,6 +177,12 @@ export default function Settings() {
         stl360TenantId: formData.get('stl360TenantId') as string || null,
         rcsEnabled: formData.get('rcsEnabled') === 'on',
         rcsFallbackToSms: formData.get('rcsFallbackToSms') === 'on',
+        rcsBrandName: formData.get('rcsBrandName') as string || null,
+        rcsBrandLogoUrl: formData.get('rcsBrandLogoUrl') as string || null,
+        rcsBrandColor: formData.get('rcsBrandColor') as string || '#1a73e8',
+        rcsBrandWebsite: formData.get('rcsBrandWebsite') as string || null,
+        rcsBrandDescription: formData.get('rcsBrandDescription') as string || null,
+        rcsBrandContactEmail: formData.get('rcsBrandContactEmail') as string || null,
       });
       const refreshedSettings = await api.getTenantSettings(selectedTenant.id);
       setTenantSettings(refreshedSettings);
@@ -744,16 +750,85 @@ export default function Settings() {
 
               {/* RCS (Rich Communication Services) */}
               <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-                <h4 style={{ marginBottom: '4px', color: '#2d3748', fontSize: '14px', fontWeight: 600 }}>RCS Messaging (Rich Communication Services)</h4>
-                <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px' }}>When enabled, campaign messages are sent via RCS for supported Android devices — delivering your verified brand name, logo, read receipts, and rich media cards. Automatically falls back to SMS for unsupported devices at no extra cost.</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <h4 style={{ color: '#2d3748', fontSize: '14px', fontWeight: 600, margin: 0 }}>RCS Messaging (Rich Communication Services)</h4>
+                  {/* Registration status badge */}
+                  {(() => {
+                    const status = (tenantSettings as any)?.rcsRegistrationStatus || 'UNREGISTERED';
+                    const colors: Record<string, { bg: string; text: string }> = {
+                      APPROVED:     { bg: '#c6f6d5', text: '#276749' },
+                      PENDING:      { bg: '#fefcbf', text: '#744210' },
+                      REJECTED:     { bg: '#fed7d7', text: '#9b2c2c' },
+                      UNREGISTERED: { bg: '#e2e8f0', text: '#4a5568' },
+                    };
+                    const c = colors[status] || colors.UNREGISTERED;
+                    return (
+                      <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 10px', borderRadius: '12px', background: c.bg, color: c.text }}>
+                        {status}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <p style={{ fontSize: '12px', color: '#718096', marginBottom: '16px' }}>When enabled, campaign messages are sent via RCS for supported Android devices — delivering your verified brand name, logo, read receipts, and rich media cards. Automatically falls back to SMS for unsupported devices at no extra cost.</p>
+
+                {/* Channel toggles */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <input type="checkbox" name="rcsEnabled" defaultChecked={(tenantSettings as any)?.rcsEnabled || false} />
                   <span style={{ fontWeight: 500 }}>Enable RCS for Campaign Messages</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                   <input type="checkbox" name="rcsFallbackToSms" defaultChecked={(tenantSettings as any)?.rcsFallbackToSms !== false} />
                   <span style={{ fontWeight: 500 }}>Auto-fallback to SMS if RCS unsupported</span>
-                  <span style={{ fontSize: '11px', color: '#718096', marginLeft: '4px' }}>(Recommended — keep enabled)</span>
+                  <span style={{ fontSize: '11px', color: '#718096', marginLeft: '4px' }}>(Recommended)</span>
+                </div>
+
+                {/* Brand Profile */}
+                <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#2d3748', marginBottom: '14px', marginTop: 0 }}>📱 RCS Brand Profile <span style={{ fontSize: '11px', fontWeight: 400, color: '#718096' }}>— Required for Twilio RCS sender registration</span></p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px' }}>Brand Display Name *</label>
+                      <input type="text" name="rcsBrandName" defaultValue={(tenantSettings as any)?.rcsBrandName || ''} placeholder="e.g., ABC Plumbing" style={{ fontSize: '13px' }} />
+                      <span style={{ fontSize: '11px', color: '#718096' }}>Shown to recipients instead of a phone number</span>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px' }}>Contact Email *</label>
+                      <input type="email" name="rcsBrandContactEmail" defaultValue={(tenantSettings as any)?.rcsBrandContactEmail || ''} placeholder="support@yourbusiness.com" style={{ fontSize: '13px' }} />
+                      <span style={{ fontSize: '11px', color: '#718096' }}>Used by Twilio for registration correspondence</span>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px' }}>Brand Website *</label>
+                      <input type="url" name="rcsBrandWebsite" defaultValue={(tenantSettings as any)?.rcsBrandWebsite || ''} placeholder="https://yourbusiness.com" style={{ fontSize: '13px' }} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '12px' }}>Brand Color</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input type="color" name="rcsBrandColor" defaultValue={(tenantSettings as any)?.rcsBrandColor || '#1a73e8'} style={{ width: '40px', height: '36px', padding: '2px', border: '1px solid #e2e8f0', borderRadius: '4px', cursor: 'pointer' }} />
+                        <span style={{ fontSize: '12px', color: '#718096' }}>Header background color in RCS messages</span>
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '12px' }}>Logo URL * <span style={{ fontWeight: 400, color: '#718096' }}>(Square PNG/JPG, min 256×256px, publicly accessible)</span></label>
+                      <input type="url" name="rcsBrandLogoUrl" defaultValue={(tenantSettings as any)?.rcsBrandLogoUrl || ''} placeholder="https://yourbusiness.com/logo.png" style={{ fontSize: '13px' }} />
+                      {(tenantSettings as any)?.rcsBrandLogoUrl && (
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <img src={(tenantSettings as any).rcsBrandLogoUrl} alt="Brand logo preview" style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          <span style={{ fontSize: '11px', color: '#48bb78' }}>✓ Logo preview loaded</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '12px' }}>Brand Tagline / Description <span style={{ fontWeight: 400, color: '#718096' }}>(max 100 characters)</span></label>
+                      <input type="text" name="rcsBrandDescription" defaultValue={(tenantSettings as any)?.rcsBrandDescription || ''} placeholder="Fast, reliable home services in your area" maxLength={100} style={{ fontSize: '13px' }} />
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '14px', padding: '10px 12px', background: '#ebf8ff', borderRadius: '6px', border: '1px solid #bee3f8' }}>
+                    <p style={{ fontSize: '11px', color: '#2b6cb0', margin: 0 }}>
+                      <strong>How to register:</strong> After saving, contact Twilio Support and request RCS sender registration for your account. Provide your Brand Display Name, Logo URL, Website, and Contact Email. Twilio will review and update your status to APPROVED (typically 3–5 business days). Once approved, enable RCS above and your campaigns will automatically use verified sender branding.
+                    </p>
+                  </div>
                 </div>
               </div>
 

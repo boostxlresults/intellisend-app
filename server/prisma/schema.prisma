@@ -61,8 +61,16 @@ model TenantSettings {
   stl360TenantId      String?                   // STL360 tenant UUID to route leads to
 
   // RCS (Rich Communication Services) — verified sender, read receipts, rich cards
-  rcsEnabled          Boolean  @default(false)  // Enable RCS sending when device supports it
-  rcsFallbackToSms    Boolean  @default(true)   // Auto-fallback to SMS if RCS not supported
+  rcsEnabled              Boolean  @default(false)  // Enable RCS sending when device supports it
+  rcsFallbackToSms        Boolean  @default(true)   // Auto-fallback to SMS if RCS not supported
+  // RCS Brand Profile — required for Twilio RCS sender registration
+  rcsBrandName            String?  // Display name shown to recipients (e.g., "ABC Plumbing")
+  rcsBrandLogoUrl         String?  // Square PNG/JPG logo URL, min 256x256px
+  rcsBrandColor           String?  @default("#1a73e8")  // Hex color for RCS message header
+  rcsBrandWebsite         String?  // Verified business website URL
+  rcsBrandDescription     String?  // Short tagline shown in sender profile (max 100 chars)
+  rcsBrandContactEmail    String?  // Contact email for Twilio RCS registration
+  rcsRegistrationStatus   String?  @default("UNREGISTERED")  // UNREGISTERED | PENDING | APPROVED | REJECTED
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

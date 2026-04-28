@@ -131,6 +131,14 @@ router.post('/:tenantId/settings', async (req, res) => {
       stl360Enabled,
       stl360ApiUrl,
       stl360TenantId,
+      rcsEnabled,
+      rcsFallbackToSms,
+      rcsBrandName,
+      rcsBrandLogoUrl,
+      rcsBrandColor,
+      rcsBrandWebsite,
+      rcsBrandDescription,
+      rcsBrandContactEmail,
     } = req.body;
     
     const updateData: any = {};
@@ -208,6 +216,34 @@ router.post('/:tenantId/settings', async (req, res) => {
 
     if (stl360TenantId !== undefined) {
       updateData.stl360TenantId = stl360TenantId || null;
+    }
+
+    // RCS channel settings
+    if (rcsEnabled !== undefined) {
+      updateData.rcsEnabled = Boolean(rcsEnabled);
+    }
+    if (rcsFallbackToSms !== undefined) {
+      updateData.rcsFallbackToSms = Boolean(rcsFallbackToSms);
+    }
+    // RCS brand profile fields
+    if (rcsBrandName !== undefined) {
+      updateData.rcsBrandName = rcsBrandName || null;
+    }
+    if (rcsBrandLogoUrl !== undefined) {
+      updateData.rcsBrandLogoUrl = rcsBrandLogoUrl || null;
+    }
+    if (rcsBrandColor !== undefined) {
+      const hexColorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+      updateData.rcsBrandColor = hexColorRegex.test(rcsBrandColor) ? rcsBrandColor : '#1a73e8';
+    }
+    if (rcsBrandWebsite !== undefined) {
+      updateData.rcsBrandWebsite = rcsBrandWebsite || null;
+    }
+    if (rcsBrandDescription !== undefined) {
+      updateData.rcsBrandDescription = rcsBrandDescription ? String(rcsBrandDescription).slice(0, 100) : null;
+    }
+    if (rcsBrandContactEmail !== undefined) {
+      updateData.rcsBrandContactEmail = rcsBrandContactEmail || null;
     }
 
     const settings = await prisma.tenantSettings.upsert({

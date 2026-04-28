@@ -166,6 +166,13 @@ export interface TenantSettings {
   stl360TenantId?: string | null;
   rcsEnabled?: boolean;
   rcsFallbackToSms?: boolean;
+  rcsBrandName?: string | null;
+  rcsBrandLogoUrl?: string | null;
+  rcsBrandColor?: string | null;
+  rcsBrandWebsite?: string | null;
+  rcsBrandDescription?: string | null;
+  rcsBrandContactEmail?: string | null;
+  rcsRegistrationStatus?: string | null;
 }
 
 export interface Tag {
