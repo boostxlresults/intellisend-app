@@ -202,14 +202,10 @@ export default function Settings() {
     setTestingStl360(true);
     setStl360TestResult(null);
     try {
-      const res = await fetch(`/api/tenants/${selectedTenant.id}/settings/test-stl360`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
+      const data = await api.testStl360Connection(selectedTenant.id);
       setStl360TestResult({ success: data.success, message: data.message || data.error || 'Unknown result' });
     } catch (err: any) {
-      setStl360TestResult({ success: false, message: err.message || 'Network error' });
+      setStl360TestResult({ success: false, message: err.message || 'Network error — check API URL and Tenant ID' });
     } finally {
       setTestingStl360(false);
     }

@@ -557,6 +557,10 @@ export const api = {
       method: 'DELETE',
     }),
 
+  testStl360Connection: (tenantId: string) =>
+    request<{ success: boolean; message?: string; error?: string; hint?: string }>(`${API_BASE}/tenants/${tenantId}/settings/test-stl360`, {
+      method: 'POST',
+    }),
   testTwilioIntegration: (tenantId: string) =>
     request<{ success: boolean; accountName?: string; status?: string; error?: string }>(`${API_BASE}/tenants/${tenantId}/integrations/twilio/test`, {
       method: 'POST',
