@@ -396,8 +396,26 @@ export async function handleInboundMessage(
     case 'RESCHEDULE':
       return await handoffToCSR(session, tenant, contact, 'Customer wants to reschedule');
 
+    case 'WHO_IS_THIS':
+      // Common from fresh leads — re-introduce, don't terminate. They may be a real lead.
+      const whoIsThisResponse = await generateResponse(
+        tenant,
+        contact,
+        session,
+        `Customer asked who is texting them or how we got their number. Warmly introduce yourself${config.botName ? ` as ${config.botName}` : ''} from ${tenant.publicName || tenant.name}, and briefly explain why you're reaching out (reference the most recent outbound message topic or their recent inquiry/service request). Be transparent and friendly, never defensive. End by asking if you can help them.`,
+        conversationHistory,
+        config.botName
+      );
+      await updateSessionState(session.id, 'CONVERSING', 'PENDING');
+      return {
+        shouldRespond: true,
+        responseText: whoIsThisResponse,
+        newState: 'CONVERSING',
+      };
+
     case 'WRONG_NUMBER':
-      const wrongNumberResponse = "We apologize for the confusion! We'll update our records. Have a great day!";
+      // Soft-close: confirm before terminating so a misclassified real lead can recover.
+      const wrongNumberResponse = `Sorry about that! This is ${tenant.publicName || tenant.name} — we had this number down for a service inquiry. If that's not you, no worries at all and we'll update our records. Have a great day!`;
       await updateSessionState(session.id, 'COMPLETED', 'NOT_INTERESTED');
       return {
         shouldRespond: true,
@@ -1477,13 +1495,25 @@ Write ONLY the SMS message text, nothing else:`;
 }
 
 async function updateSessionState(sessionId: string, state: string, outcome: string): Promise<void> {
-  await prisma.aIAgentSession.update({
-    where: { id: sessionId },
-    data: { 
-      state: state as any,
-      outcome: outcome as any,
-    },
-  });
+  // Defensive: a failed state write must never destroy the customer-facing reply.
+  // (Previously, writing states missing from the Prisma enum threw here, the outer
+  // catch swallowed the generated response, and the customer got a canned handoff.)
+  try {
+    await prisma.aIAgentSession.update({
+      where: { id: sessionId },
+      data: {
+        state: state as any,
+        outcome: outcome as any,
+      },
+    });
+  } catch (error: any) {
+    console.error('[AI Agent] Failed to update session state (non-fatal):', {
+      sessionId,
+      state,
+      outcome,
+      message: error?.message,
+    });
+  }
 }
 
 function parseAddress(address: string): { street: string; city: string; state: string; zip: string } {
