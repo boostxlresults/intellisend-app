@@ -336,13 +336,18 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       if (aiResponse && aiResponse.shouldRespond && aiResponse.responseText) {
         console.log(`[AI Agent] Response for conversation ${conversation.id}: ${aiResponse.newState}`);
         
-        // Get the tenant's default from number
-        const sendContext = await prisma.tenantSettings.findUnique({
-          where: { tenantId },
-          include: { defaultFromNumber: true },
-        });
-        
+        // Get the tenant's default from number + AI agent config (for response delay)
+        const [sendContext, agentConfig] = await Promise.all([
+          prisma.tenantSettings.findUnique({
+            where: { tenantId },
+            include: { defaultFromNumber: true },
+          }),
+          prisma.aIAgentConfig.findUnique({ where: { tenantId } }),
+        ]);
+
         const fromNumber = sendContext?.defaultFromNumber?.phoneNumber || To;
+        // Honor configured delay (default 30s "human feel"); clamp to sane bounds
+        const delaySeconds = Math.min(Math.max(agentConfig?.responseDelaySeconds ?? 30, 0), 300);
         
         // Add opt-out footer only if not already present
         const lowerText = aiResponse.responseText.toLowerCase();
@@ -365,7 +370,7 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
             body: messageWithFooter,
             fromNumber,
             status: 'PENDING',
-            processAfter: new Date(Date.now() + 30000), // 30 second delay to seem more human
+            processAfter: new Date(Date.now() + delaySeconds * 1000), // configurable delay (AIAgentConfig.responseDelaySeconds)
           },
         });
         

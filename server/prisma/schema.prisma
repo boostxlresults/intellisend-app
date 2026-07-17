@@ -821,6 +821,8 @@ enum ConversationAgentState {
   CONFIRMED               // Appointment booked and confirmed
   HANDOFF_TO_CSR          // Created booking for CSR follow-up (warm lead)
   COMPLETED               // Conversation concluded
+  CONVERSING              // Open-ended conversation (info requests, interest, unclear)
+  ERROR                   // Handler hit an unrecoverable error
 }
 
 enum AIAgentOutcome {
