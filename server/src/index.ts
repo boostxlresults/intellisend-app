@@ -14,6 +14,7 @@ import suppressionRoutes from './routes/suppressions';
 import aiPersonaRoutes from './routes/aiPersonas';
 import kbArticleRoutes from './routes/kbArticles';
 import twilioWebhooks from './routes/twilioWebhooks';
+import speedToLeadWebhooks from './routes/speedToLead';
 import healthRoutes from './routes/health';
 import analyticsRoutes from './routes/analytics';
 import authRoutes from './routes/auth';
@@ -104,6 +105,9 @@ app.use('/api', requireAuth, aiAgentRoutes);
 app.use('/api', templateRoutes);
 app.use('/', linkRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
+// SpeedToLead360 first-touch webhook — authenticated via X-STL360-Key header (no session auth).
+// Full route: POST /api/webhooks/speed-to-lead/first-touch
+app.use('/api/webhooks', speedToLeadWebhooks);
 app.use('/api/health', healthRoutes);
 
 // Only register object storage routes in Replit environment (dynamic import to avoid errors on Railway)

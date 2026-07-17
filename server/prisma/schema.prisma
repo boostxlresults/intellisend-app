@@ -908,6 +908,11 @@ model AIAgentSession {
   lastIntent          String?               // Last classified intent
   qualificationScore  Int       @default(0) // 0-100, higher = more qualified
   messageCount        Int       @default(0)
+
+  // SpeedToLead360 first-touch origin (outbound-first entry point)
+  // Additive/optional: lets AI replies be routed back to the correct STL360 lead card.
+  leadSource          String?               // e.g. lead form / channel the lead came from (STL360 lead.source)
+  stl360LeadId        String?               // STL360 lead UUID that seeded this session
   
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
