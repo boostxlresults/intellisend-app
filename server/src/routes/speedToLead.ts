@@ -171,7 +171,28 @@ router.post('/speed-to-lead/first-touch', async (req, res) => {
   // Everything past auth/validation is best-effort and must never 5xx to STL360.
   try {
     // ----- 3. RESOLVE TENANT -----
-    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    // Resolve the Intellisend tenant flexibly so the integration never depends
+    // on hardcoding an opaque Intellisend UUID:
+    //   1) body.tenantId matches an Intellisend Tenant.id directly, OR
+    //   2) a tenant whose TenantSettings.stl360TenantId == body.tenantId
+    //      (i.e. STL360 sends its OWN tenant id), OR
+    //   3) if this Intellisend instance has exactly one tenant, use it.
+    let tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      const mapped = await prisma.tenantSettings.findFirst({
+        where: { stl360TenantId: tenantId },
+        select: { tenantId: true },
+      });
+      if (mapped) {
+        tenant = await prisma.tenant.findUnique({ where: { id: mapped.tenantId } });
+      }
+    }
+    if (!tenant) {
+      const all = await prisma.tenant.findMany({ take: 2, select: { id: true } });
+      if (all.length === 1) {
+        tenant = await prisma.tenant.findUnique({ where: { id: all[0].id } });
+      }
+    }
     if (!tenant) {
       return res.status(404).json({ success: false, error: 'tenant_not_found' });
     }
