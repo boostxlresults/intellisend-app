@@ -993,3 +993,17 @@ model ServiceTitanBookingJob {
   @@index([tenantId])
   @@index([status, nextRunAt])
 }
+
+/// express-session store table, created and managed at runtime by
+/// connect-pg-simple (see src/index.ts: tableName 'sessions',
+/// createTableIfMissing: true). Modeled here ONLY so `prisma db push`
+/// recognizes it and does NOT try to DROP it on deploy. Columns match
+/// connect-pg-simple's default table exactly.
+model Session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@map("sessions")
+}
