@@ -81,6 +81,12 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// SpeedToLead360 first-touch webhook — PUBLIC (authenticated via the X-STL360-Key
+// header inside the handler, not by session auth). Mounted BEFORE the /api
+// requireAuth guards below so the auth middleware never intercepts it.
+// Full route: POST /api/webhooks/speed-to-lead/first-touch
+app.use('/api/webhooks', speedToLeadWebhooks);
+
 app.use('/api/auth', authRoutes);
 
 app.use('/api/tenants', requireAuth, tenantRoutes);
@@ -105,9 +111,6 @@ app.use('/api', requireAuth, aiAgentRoutes);
 app.use('/api', templateRoutes);
 app.use('/', linkRoutes);
 app.use('/webhooks/twilio', twilioWebhooks);
-// SpeedToLead360 first-touch webhook — authenticated via X-STL360-Key header (no session auth).
-// Full route: POST /api/webhooks/speed-to-lead/first-touch
-app.use('/api/webhooks', speedToLeadWebhooks);
 app.use('/api/health', healthRoutes);
 
 // Only register object storage routes in Replit environment (dynamic import to avoid errors on Railway)
