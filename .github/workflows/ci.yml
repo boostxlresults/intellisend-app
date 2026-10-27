@@ -23,7 +23,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # Same install Railway uses
+      # Same installs Railway does: the repo root (resend, multer, storage
+      # are declared there and resolved from the parent node_modules), then server.
+      - name: Install root packages
+        working-directory: .
+        run: npm install 2>&1 | tail -20 > root-install.log || { sed 's/^/::error::/' root-install.log; exit 1; }
       - name: Install
         run: npm install --include=dev 2>&1 | tail -20 > ../install.log || { sed 's/^/::error::/' ../install.log; exit 1; }
       - name: Prisma validate and generate
