@@ -1,7 +1,7 @@
 import { prisma } from '../index';
 import { syncServiceTitanContacts } from './serviceTitanContactSync';
 import { syncServiceTitanRevenue } from './serviceTitanRevenueSync';
-import { getMirrorTenantId, isMirrorConfigured } from './mirror/mirrorClient';
+import { getMirrorTenantId, isMirrorConfigured, resolveMirrorTenantId } from './mirror/mirrorClient';
 import { runMirrorAudienceSync } from './mirror/mirrorAudienceSync';
 
 const CHECK_INTERVAL_MS = 60000;
@@ -17,8 +17,14 @@ function mirrorSyncEnabled(): boolean {
 
 export function startNightlySyncScheduler() {
   console.log('Nightly ServiceTitan sync scheduler started');
-  if (mirrorSyncEnabled()) {
-    console.log(`[Mirror Sync] Hourly ServiceTitan mirror sync enabled for tenant ${getMirrorTenantId()} at :${String(MIRROR_SYNC_MINUTE).padStart(2, '0')}`);
+  if (isMirrorConfigured()) {
+    resolveMirrorTenantId()
+      .then((id) => {
+        if (mirrorSyncEnabled()) {
+          console.log(`[Mirror Sync] Hourly ServiceTitan mirror sync enabled for tenant ${id} at :${String(MIRROR_SYNC_MINUTE).padStart(2, '0')}`);
+        }
+      })
+      .catch((err) => console.error('[Mirror Sync] Could not resolve tenant:', err));
   }
 
   setInterval(async () => {
@@ -28,6 +34,9 @@ export function startNightlySyncScheduler() {
 }
 
 async function checkAndRunHourlyMirrorSync() {
+  if (isMirrorConfigured() && !getMirrorTenantId()) {
+    await resolveMirrorTenantId().catch(() => null);
+  }
   if (!mirrorSyncEnabled()) return;
   const now = new Date();
   const hourKey = now.toISOString().slice(0, 13);

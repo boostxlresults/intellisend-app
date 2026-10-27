@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index';
-import { getMirrorTenantId, isMirrorConfigured } from '../services/mirror/mirrorClient';
+import { isMirrorConfigured, resolveMirrorTenantId } from '../services/mirror/mirrorClient';
 import { runMirrorAudienceSync } from '../services/mirror/mirrorAudienceSync';
 
 const router = Router();
@@ -10,7 +10,7 @@ router.get('/:tenantId/mirror-sync/status', async (req, res) => {
   try {
     const { tenantId } = req.params;
     const configured = isMirrorConfigured();
-    const managesTenant = configured && getMirrorTenantId() === tenantId;
+    const managesTenant = configured && (await resolveMirrorTenantId()) === tenantId;
 
     const runs = await prisma.mirrorSyncRun.findMany({
       where: { tenantId },
@@ -44,7 +44,7 @@ router.get('/:tenantId/mirror-sync/status', async (req, res) => {
 router.post('/:tenantId/mirror-sync/run', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    if (!isMirrorConfigured() || getMirrorTenantId() !== tenantId) {
+    if (!isMirrorConfigured() || (await resolveMirrorTenantId()) !== tenantId) {
       return res.status(400).json({ error: 'The ServiceTitan mirror sync is not configured for this account.' });
     }
     runMirrorAudienceSync(tenantId, 'manual').then((r) => {

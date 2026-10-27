@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../index';
 import { testServiceTitanConnection } from '../services/serviceTitanClient';
-import { getMirrorTenantId, isMirrorConfigured } from '../services/mirror/mirrorClient';
+import { isMirrorConfigured, resolveMirrorTenantId } from '../services/mirror/mirrorClient';
 
 /** True when the ServiceTitan mirror sync owns this tenant's contacts and tags. */
-function mirrorManages(tenantId: string): boolean {
-  return isMirrorConfigured() && getMirrorTenantId() === tenantId;
+async function mirrorManages(tenantId: string): Promise<boolean> {
+  return isMirrorConfigured() && (await resolveMirrorTenantId()) === tenantId;
 }
 
 const MIRROR_MANAGED_MESSAGE =
@@ -137,7 +137,7 @@ router.post('/:tenantId/servicetitan-test', async (req, res) => {
 router.post('/:tenantId/servicetitan/sync-contacts', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    if (mirrorManages(tenantId)) {
+    if (await mirrorManages(tenantId)) {
       return res.status(409).json({ error: MIRROR_MANAGED_MESSAGE });
     }
     
@@ -154,7 +154,7 @@ router.post('/:tenantId/servicetitan/sync-contacts', async (req, res) => {
 router.post('/:tenantId/servicetitan/import-contacts', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    if (mirrorManages(tenantId)) {
+    if (await mirrorManages(tenantId)) {
       return res.status(409).json({ error: MIRROR_MANAGED_MESSAGE });
     }
     

@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { prisma } from '../../index';
 
 /**
  * Read-only connection to the ServiceTitan mirror (Supabase `idesign-prod`).
@@ -33,7 +34,33 @@ export function getMirrorPool(): Pool {
   return pool;
 }
 
-/** IntelliSend tenant that the mirror's customers belong to. */
+/** ServiceTitan tenant the mirror holds (Intelligent Design). */
+const MIRROR_ST_TENANT_ID = process.env.MIRROR_ST_TENANT_ID || '227669022';
+
+let cachedTenantId: string | null = process.env.MIRROR_TENANT_ID || null;
+
+/**
+ * IntelliSend tenant that the mirror's customers belong to.
+ *
+ * MIRROR_TENANT_ID wins if set. Otherwise it is the IntelliSend tenant whose
+ * enabled ServiceTitan connection points at the mirrored ServiceTitan tenant,
+ * or, failing that, the only tenant with ServiceTitan enabled.
+ */
+export async function resolveMirrorTenantId(): Promise<string | null> {
+  if (cachedTenantId) return cachedTenantId;
+  const enabled = await prisma.serviceTitanConfig.findMany({
+    where: { enabled: true },
+    select: { tenantId: true, serviceTitanTenantId: true },
+  });
+  const match = enabled.find((c) => String(c.serviceTitanTenantId).trim() === MIRROR_ST_TENANT_ID);
+  cachedTenantId = match?.tenantId ?? (enabled.length === 1 ? enabled[0].tenantId : null);
+  if (!cachedTenantId) {
+    console.warn(`[Mirror] Could not determine which IntelliSend tenant owns ServiceTitan tenant ${MIRROR_ST_TENANT_ID}; set MIRROR_TENANT_ID`);
+  }
+  return cachedTenantId;
+}
+
+/** Last resolved tenant (null until resolveMirrorTenantId has run). */
 export function getMirrorTenantId(): string | null {
-  return process.env.MIRROR_TENANT_ID || null;
+  return cachedTenantId;
 }
