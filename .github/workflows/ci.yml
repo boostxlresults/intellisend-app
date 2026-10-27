@@ -37,6 +37,42 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit --pretty false
 
+  db-upgrade:
+    name: Database upgrade (same as Railway start)
+    # Railway runs `prisma db push` (no --accept-data-loss) on every start.
+    # A schema change that Prisma flags as possible data loss would stop the
+    # server from booting, so replay the upgrade from main's schema here.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm install --include=dev --ignore-scripts 2>&1 | tail -20 > ../install.log || { sed 's/^/::error::/' ../install.log; exit 1; }
+      - name: Create database from main's schema
+        run: |
+          git fetch --depth=1 origin main
+          git show FETCH_HEAD:server/prisma/schema.prisma > ../main.prisma
+          npx prisma db push --schema ../main.prisma --skip-generate 2>&1 | tee ../push-main.log || { tail -20 ../push-main.log | sed 's/^/::error::/'; exit 1; }
+      - name: Upgrade to this branch's schema (no --accept-data-loss)
+        run: npx prisma db push --skip-generate 2>&1 | tee ../push-branch.log || { tail -20 ../push-branch.log | sed 's/^/::error::/'; exit 1; }
+
   client:
     name: Client build
     runs-on: ubuntu-latest

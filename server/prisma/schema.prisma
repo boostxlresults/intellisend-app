@@ -199,7 +199,7 @@ model Contact {
   messages        Message[]
   notes           ContactNote[]
 
-  @@unique([tenantId, stCustomerId])
+  @@index([tenantId, stCustomerId])
   @@index([phone])
   @@index([tenantId])
 }
