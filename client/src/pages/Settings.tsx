@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import MirrorSyncPanel from '../components/MirrorSyncPanel';
+import VirtualCsrSettings from '../components/VirtualCsrSettings';
 import { api, TenantNumber, Suppression, AiPersona, TenantSettings, ServiceTitanConfig, AIAgentConfig } from '../api/client';
 
 interface TwilioIntegration {
@@ -1260,6 +1261,8 @@ export default function Settings() {
               )}
             </form>
           </div>
+
+          {selectedTenant && <VirtualCsrSettings tenantId={selectedTenant.id} />}
 
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>

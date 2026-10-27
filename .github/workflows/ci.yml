@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+# Failures are re-emitted as ::error:: annotations so they show up on the PR
+# without opening raw logs.
+
 jobs:
   server:
     name: Server typecheck
@@ -12,16 +15,23 @@ jobs:
     defaults:
       run:
         working-directory: server
+    env:
+      # Prisma needs the variable to exist to validate/generate; nothing connects.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       # Same install Railway uses
-      - run: npm install --include=dev
-      - run: npx prisma validate
-      - run: npx prisma generate
-      - run: npx tsc --noEmit
+      - name: Install
+        run: npm install --include=dev 2>&1 | tail -20 > ../install.log || { sed 's/^/::error::/' ../install.log; exit 1; }
+      - name: Prisma validate and generate
+        run: |
+          set -o pipefail
+          { npx prisma validate && npx prisma generate; } 2>&1 | tee ../prisma.log || { grep -v '^$' ../prisma.log | tail -20 | sed 's/^/::error::/'; exit 1; }
+      - name: Typecheck
+        run: npx tsc --noEmit --pretty false
 
   client:
     name: Client build
@@ -34,5 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
-      - run: npm run build
+      - name: Install
+        run: npm install 2>&1 | tail -20 > ../install.log || { sed 's/^/::error::/' ../install.log; exit 1; }
+      - name: Build
+        run: npm run build -- --logLevel error

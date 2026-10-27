@@ -949,6 +949,14 @@ model AIAgentConfig {
   defaultJobTypeId      String?
   defaultCampaignId     String?  // ST marketing campaign ID
   responseDelaySeconds  Int      @default(30)    // Delay before AI responds (seems more human)
+
+  // Virtual CSR (Claude) settings
+  agentEngine           String   @default("legacy") // 'legacy' = original state machine, 'claude' = virtual CSR
+  agentMode             String   @default("shadow") // 'shadow' | 'supervised' | 'autonomous'
+  csrInstructions       String?  // Business rules taught by the team, in plain English
+  bookableJobTypes      Json?    // [{ jobTypeId, businessUnitId, label, whenToUse }]
+  emergencyAlertPhone   String?  // Who gets texted when the agent sees an emergency
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -1035,5 +1043,58 @@ model MirrorSyncRun {
   error       String?
 
   @@index([tenantId, startedAt])
+}
+
+// ============================================
+// VIRTUAL CSR (Claude) - turns and audit log
+// ============================================
+
+/// One agent response to a customer. In shadow mode this is a draft waiting
+/// for a CSR; in other modes it records what was sent.
+model CsrAgentTurn {
+  id              String    @id @default(uuid())
+  tenantId        String
+  conversationId  String
+  contactId       String
+  mode            String    // shadow | supervised | autonomous
+  status          String    // DRAFT | SENT | REJECTED | FAILED | HANDED_OFF | NO_REPLY | ERROR
+  replyText       String?
+  finalText       String?   // What was actually sent (may be edited by a CSR)
+  model           String
+  inputTokens     Int       @default(0)
+  outputTokens    Int       @default(0)
+  error           String?
+  reviewNote      String?   // CSR feedback when editing or rejecting
+  decidedBy       String?
+  decidedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  actions CsrAgentAction[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([conversationId, createdAt])
+}
+
+/// Every tool call the agent made: reads, writes, proposals. This is the
+/// audit trail for anything the agent did in ServiceTitan.
+model CsrAgentAction {
+  id             String    @id @default(uuid())
+  turnId         String
+  tenantId       String
+  conversationId String
+  seq            Int
+  tool           String
+  input          Json
+  // READ | EXECUTED | PROPOSED | APPROVED_EXECUTED | REJECTED | FAILED | BLOCKED
+  status         String
+  result         Json?
+  error          String?
+  executedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  turn CsrAgentTurn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, tool, createdAt])
+  @@index([turnId, seq])
 }
 

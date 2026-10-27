@@ -5,6 +5,7 @@ import { isStopKeyword, isOptInKeyword, isNegativeSentiment } from '../utils/sms
 import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
 import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
+import { isVirtualCsrConfig, scheduleVirtualCsrTurn } from '../services/virtualCsr/agent';
 import { normalizePhone } from '../utils/phoneNormalize';
 import { processPsaOptIn } from '../services/psaOptInWorkflow';
 
@@ -309,6 +310,17 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
     }
     
     const inboundMessageSid = MessageSid || '';
+
+    // Virtual CSR (Claude) takes over the conversation when enabled. It books
+    // real jobs itself, so the per-message ServiceTitan Booking is skipped to
+    // avoid a duplicate in the Bookings queue.
+    const agentConfigForRouting = await prisma.aIAgentConfig.findUnique({ where: { tenantId } });
+    if (isVirtualCsrConfig(agentConfigForRouting)) {
+      scheduleVirtualCsrTurn(conversation.id, agentConfigForRouting?.responseDelaySeconds ?? 20);
+      console.log(`Inbound message saved for conversation ${conversation.id} (virtual CSR scheduled)`);
+      res.type('text/xml').send('<Response></Response>');
+      return;
+    }
     
     // Create a ServiceTitan booking job for each inbound message (non-blocking)
     if (inboundMessageSid) {

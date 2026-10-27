@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
 import { api, Conversation } from '../api/client';
+import VirtualCsrPanel from '../components/VirtualCsrPanel';
 
 export default function ConversationDetail() {
   const { conversationId } = useParams<{ conversationId: string }>();
@@ -217,6 +218,10 @@ export default function ConversationDetail() {
         ))}
         <div ref={messagesEndRef} />
       </div>
+
+      {selectedTenant && conversationId && (
+        <VirtualCsrPanel tenantId={selectedTenant.id} conversationId={conversationId} />
+      )}
       
       {suggestions.length > 0 && (
         <div className="suggestion-list" style={{ marginBottom: '10px' }}>
