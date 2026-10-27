@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../context/TenantContext';
+import MirrorSyncPanel from '../components/MirrorSyncPanel';
+import VirtualCsrSettings from '../components/VirtualCsrSettings';
 import { api, TenantNumber, Suppression, AiPersona, TenantSettings, ServiceTitanConfig, AIAgentConfig } from '../api/client';
 
 interface TwilioIntegration {
@@ -60,7 +62,7 @@ export default function Settings() {
   const [syncStatus, setSyncStatus] = useState<{ taggedCount: number; totalContacts: number } | null>(null);
   const [testingAvailability, setTestingAvailability] = useState(false);
   const [importingContacts, setImportingContacts] = useState(false);
-  const [allTags, setAllTags] = useState<{ id: string; name: string; color?: string }[]>([]);
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color?: string; isSystem?: boolean }[]>([]);
   const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
   const [aiAgentForm, setAiAgentForm] = useState({
     enabled: false,
@@ -1042,6 +1044,8 @@ export default function Settings() {
             )}
           </div>
 
+          {selectedTenant && <MirrorSyncPanel tenantId={selectedTenant.id} />}
+
           <div className="card">
             <h3 style={{ marginBottom: '16px' }}>ServiceTitan Integration</h3>
             <p style={{ color: '#718096', marginBottom: '16px', fontSize: '14px' }}>
@@ -1257,6 +1261,8 @@ export default function Settings() {
               )}
             </form>
           </div>
+
+          {selectedTenant && <VirtualCsrSettings tenantId={selectedTenant.id} />}
 
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1475,14 +1481,18 @@ export default function Settings() {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn btn-danger btn-sm"
-                          style={{ fontSize: '11px', padding: '4px 10px' }}
-                          onClick={() => handleBulkDeleteByTag(tag.id, tag.name)}
-                          disabled={deletingTagId === tag.id}
-                        >
-                          {deletingTagId === tag.id ? 'Deleting...' : 'Delete All Contacts'}
-                        </button>
+                        {tag.isSystem ? (
+                          <span style={{ fontSize: '12px', color: '#718096' }}>Managed by ServiceTitan sync</span>
+                        ) : (
+                          <button
+                            className="btn btn-danger btn-sm"
+                            style={{ fontSize: '11px', padding: '4px 10px' }}
+                            onClick={() => handleBulkDeleteByTag(tag.id, tag.name)}
+                            disabled={deletingTagId === tag.id}
+                          >
+                            {deletingTagId === tag.id ? 'Deleting...' : 'Delete All Contacts'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

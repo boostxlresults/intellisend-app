@@ -95,6 +95,8 @@ export interface Segment {
   tenantId: string;
   name: string;
   type: 'STATIC' | 'DYNAMIC';
+  definitionJson?: string | null;
+  excludedTagIds?: string[];
   createdAt?: string;
   _count?: {
     members: number;
@@ -179,8 +181,86 @@ export interface Tag {
   id: string;
   name: string;
   color?: string;
+  isSystem?: boolean;
   contactCount?: number;
   createdAt: string;
+}
+
+export interface BookableJobTypeConfig {
+  key?: string;
+  label: string;
+  jobTypeId: number;
+  businessUnitId: number;
+  whenToUse: string;
+}
+
+export interface VirtualCsrConfig {
+  configured: boolean;
+  enabled: boolean;
+  agentEngine: 'legacy' | 'claude';
+  agentMode: 'shadow' | 'supervised' | 'autonomous';
+  botName: string | null;
+  csrInstructions: string;
+  bookableJobTypes: BookableJobTypeConfig[];
+  emergencyAlertPhone: string;
+  defaultCampaignId: string | null;
+  anthropicKeyConfigured: boolean;
+  model: string;
+}
+
+export interface CsrAgentAction {
+  id: string;
+  seq: number;
+  tool: string;
+  input: Record<string, unknown>;
+  status: 'PENDING' | 'READ' | 'EXECUTED' | 'PROPOSED' | 'APPROVED_EXECUTED' | 'REJECTED' | 'FAILED' | 'BLOCKED';
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  createdAt: string;
+}
+
+export interface CsrAgentTurn {
+  id: string;
+  mode: string;
+  status: string;
+  replyText?: string | null;
+  finalText?: string | null;
+  error?: string | null;
+  reviewNote?: string | null;
+  createdAt: string;
+  actions: CsrAgentAction[];
+}
+
+export interface MirrorSyncRun {
+  id: string;
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  trigger: 'scheduled' | 'manual';
+  startedAt: string;
+  finishedAt?: string | null;
+  error?: string | null;
+  stats?: {
+    profileRows: number;
+    contactsCreated: number;
+    contactsUpdated: number;
+    contactsAdopted: number;
+    contactsUnchanged: number;
+    managedNoLongerQualifying: number;
+    tagLinksAdded: number;
+    tagLinksRemoved: number;
+    suppressionsAdded: number;
+    dynamicSegmentsRefreshed: number;
+    mirrorRefreshedAt: string | null;
+    durationMs: number;
+  } | null;
+}
+
+export interface MirrorSyncStatus {
+  configured: boolean;
+  managesTenant: boolean;
+  enabled: boolean;
+  managedContacts: number;
+  runs: MirrorSyncRun[];
+  systemTags: Array<{ id: string; name: string; contactCount: number }>;
 }
 
 export interface KBArticle {
@@ -367,7 +447,13 @@ export const api = {
   getSegments: (tenantId: string) =>
     request<Segment[]>(`${API_BASE}/tenants/${tenantId}/segments`),
   
-  createSegment: (tenantId: string, data: { name: string; contactIds?: string[] }) =>
+  createSegment: (tenantId: string, data: {
+    name: string;
+    contactIds?: string[];
+    type?: 'STATIC' | 'DYNAMIC';
+    tagFilter?: { mode: 'ALL' | 'ANY' | 'NONE'; tagIds: string[] };
+    excludedTagIds?: string[];
+  }) =>
     request<Segment>(`${API_BASE}/tenants/${tenantId}/segments`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -644,11 +730,55 @@ export const api = {
       body: JSON.stringify({ tagNames }),
     }),
 
-  previewSegment: (tenantId: string, tagFilter: { mode: string; tagIds: string[] }) =>
-    request<{ totalCount: number; preview: Array<{ id: string; firstName: string; lastName: string; phone: string; tags: string[] }> }>(
+  previewSegment: (tenantId: string, tagFilter: { mode: string; tagIds: string[] }, excludedTagIds: string[] = []) =>
+    request<{ totalCount: number; preview: Array<{ id: string; firstName: string; lastName: string; phone: string; tags: Array<{ id: string; name: string; color: string }> }> }>(
       `${API_BASE}/tenants/${tenantId}/segments/preview`,
-      { method: 'POST', body: JSON.stringify({ tagFilter }) }
+      { method: 'POST', body: JSON.stringify({ tagFilter, excludedTagIds }) }
     ),
+
+  refreshSegment: (tenantId: string, segmentId: string) =>
+    request<{ count: number; added: number; removed: number; skipped: boolean }>(
+      `${API_BASE}/tenants/${tenantId}/segments/${segmentId}/refresh`,
+      { method: 'POST' }
+    ),
+
+  getVirtualCsrConfig: (tenantId: string) =>
+    request<VirtualCsrConfig>(`${API_BASE}/tenants/${tenantId}/virtual-csr/config`),
+
+  saveVirtualCsrConfig: (tenantId: string, data: Partial<VirtualCsrConfig>) =>
+    request<unknown>(`${API_BASE}/tenants/${tenantId}/virtual-csr/config`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  getVirtualCsrBookingSetup: (tenantId: string) =>
+    request<{ jobTypes: Array<{ id: number; name: string; businessUnitIds: number[] }>; businessUnits: Array<{ id: number; name: string }> }>(
+      `${API_BASE}/tenants/${tenantId}/virtual-csr/booking-setup`),
+
+  getVirtualCsrTurns: (tenantId: string, conversationId: string) =>
+    request<CsrAgentTurn[]>(`${API_BASE}/tenants/${tenantId}/virtual-csr/conversations/${conversationId}/turns`),
+
+  runVirtualCsr: (tenantId: string, conversationId: string) =>
+    request<{ turnId: string | null }>(`${API_BASE}/tenants/${tenantId}/virtual-csr/conversations/${conversationId}/run`, { method: 'POST' }),
+
+  approveCsrTurn: (tenantId: string, turnId: string, text?: string, note?: string) =>
+    request<{ sent: boolean; error?: string }>(`${API_BASE}/tenants/${tenantId}/virtual-csr/turns/${turnId}/approve`, {
+      method: 'POST', body: JSON.stringify({ text, note }),
+    }),
+
+  rejectCsrTurn: (tenantId: string, turnId: string, note?: string) =>
+    request<{ rejected: boolean }>(`${API_BASE}/tenants/${tenantId}/virtual-csr/turns/${turnId}/reject`, {
+      method: 'POST', body: JSON.stringify({ note }),
+    }),
+
+  approveCsrAction: (tenantId: string, actionId: string) =>
+    request<{ ok: boolean; error?: string }>(`${API_BASE}/tenants/${tenantId}/virtual-csr/actions/${actionId}/approve`, { method: 'POST' }),
+
+  rejectCsrAction: (tenantId: string, actionId: string) =>
+    request<{ rejected: boolean }>(`${API_BASE}/tenants/${tenantId}/virtual-csr/actions/${actionId}/reject`, { method: 'POST' }),
+
+  getMirrorSyncStatus: (tenantId: string) =>
+    request<MirrorSyncStatus>(`${API_BASE}/tenants/${tenantId}/mirror-sync/status`),
+
+  runMirrorSync: (tenantId: string) =>
+    request<{ started: boolean }>(`${API_BASE}/tenants/${tenantId}/mirror-sync/run`, { method: 'POST' }),
 
   getComplianceAnalytics: (tenantId: string, range: string = '30d') =>
     request<{

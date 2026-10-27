@@ -7,6 +7,60 @@ import { normalizePhone } from '../utils/phoneNormalize';
 import { sendDuplicateAlertEmail } from './emailNotifications';
 import { filterSmsCapableContacts } from './phoneValidator';
 import { isContactInOptInCooldown } from './psaOptInWorkflow';
+import { refreshSegmentMembers } from './segmentResolver';
+import { blockedByConsent } from '../utils/consentGate';
+
+const CAMPAIGN_INCLUDE = {
+  tenant: true,
+  segment: {
+    include: {
+      members: {
+        include: {
+          contact: true,
+        },
+      },
+    },
+  },
+  campaignSegments: {
+    include: {
+      segment: {
+        include: {
+          members: {
+            include: {
+              contact: true,
+            },
+          },
+        },
+      },
+    },
+  },
+  steps: {
+    orderBy: { order: 'asc' as const },
+  },
+};
+
+/**
+ * Re-evaluate any DYNAMIC segments a campaign targets so it sends to who
+ * qualifies right now, not who qualified when the segment was created.
+ * Returns true if anything was refreshed.
+ */
+async function refreshCampaignDynamicSegments(campaign: any): Promise<boolean> {
+  const segments = [
+    campaign.segment,
+    ...(campaign.campaignSegments ?? []).map((cs: any) => cs.segment),
+  ].filter((s: any) => s && s.type === 'DYNAMIC');
+  let refreshed = false;
+  for (const seg of segments) {
+    try {
+      const r = await refreshSegmentMembers(seg.id);
+      if (!r.skipped) refreshed = true;
+      console.log(`[Scheduler] Refreshed dynamic segment ${seg.name}: ${r.count} members (+${r.added}/-${r.removed})`);
+    } catch (err: any) {
+      console.error(`[Scheduler] Could not refresh dynamic segment ${seg.name}: ${err.message}`);
+    }
+  }
+  return refreshed;
+}
 
 const SCHEDULER_INTERVAL_MS = 60000;
 
@@ -61,40 +115,18 @@ async function processScheduledCampaigns() {
         complianceQuietHoursOk: true,
         complianceContentReviewed: true,
       },
-      include: {
-        tenant: true,
-        segment: {
-          include: {
-            members: {
-              include: {
-                contact: true,
-              },
-            },
-          },
-        },
-        campaignSegments: {
-          include: {
-            segment: {
-              include: {
-                members: {
-                  include: {
-                    contact: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        steps: {
-          orderBy: { order: 'asc' },
-        },
-      },
+      include: CAMPAIGN_INCLUDE,
     });
     
     for (const campaign of scheduledCampaigns) {
       // --- SAFETY: Isolate each campaign in its own try/catch so one bad campaign never crashes the scheduler ---
       try {
-        await processSingleCampaign(campaign, now);
+        let toProcess: any = campaign;
+        if (await refreshCampaignDynamicSegments(campaign)) {
+          toProcess = await prisma.campaign.findUnique({ where: { id: campaign.id }, include: CAMPAIGN_INCLUDE });
+          if (!toProcess) continue;
+        }
+        await processSingleCampaign(toProcess, now);
       } catch (campaignError: any) {
         console.error(`[Scheduler] CRITICAL ERROR processing campaign ${campaign.id} (${campaign.name}): ${campaignError.message}`);
         // Reset campaign to SCHEDULED so it can be retried on next tick
@@ -159,7 +191,7 @@ async function processSingleCampaign(campaign: any, now: Date) {
     return;
   }
   
-  const allSegmentMembers: Array<{ contact: { id: string; phone: string; firstName: string; lastName: string } }> = [];
+  const allSegmentMembers: Array<{ contact: { id: string; phone: string; firstName: string; lastName: string; consentTimestamp?: Date | null; consentClass?: string | null } }> = [];
   
   if (campaign.campaignSegments && campaign.campaignSegments.length > 0) {
     for (const cs of campaign.campaignSegments) {
@@ -285,6 +317,7 @@ async function processSingleCampaign(campaign: any, now: Date) {
   
   let skippedCount = 0;
   let suppressedCount = 0;
+  let consentSkippedCount = 0;
   
   const excludedTagIds: string[] = (campaign as any).excludedTagIds || [];
   
@@ -345,6 +378,12 @@ async function processSingleCampaign(campaign: any, now: Date) {
       
       if (isSuppressed) {
         suppressedCount++;
+        continue;
+      }
+
+      // --- CONSENT GATE for ServiceTitan mirror contacts ---
+      if (blockedByConsent(contact, campaign.type)) {
+        consentSkippedCount++;
         continue;
       }
 
@@ -413,9 +452,9 @@ async function processSingleCampaign(campaign: any, now: Date) {
       firstStep.id,
       messagesToQueue
     );
-    console.log(`[Scheduler] Campaign ${campaign.name}: queued ${result.queued} messages, ${skippedCount} skipped, ${suppressedCount} suppressed`);
+    console.log(`[Scheduler] Campaign ${campaign.name}: queued ${result.queued} messages, ${skippedCount} skipped, ${suppressedCount} suppressed, ${consentSkippedCount} held for opt-in`);
   } else {
-    console.log(`[Scheduler] Campaign ${campaign.name}: no new messages to queue (${skippedCount} skipped, ${suppressedCount} suppressed)`);
+    console.log(`[Scheduler] Campaign ${campaign.name}: no new messages to queue (${skippedCount} skipped, ${suppressedCount} suppressed, ${consentSkippedCount} held for opt-in)`);
   }
   
   await prisma.campaign.update({
