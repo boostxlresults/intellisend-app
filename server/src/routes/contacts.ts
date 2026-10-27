@@ -572,6 +572,12 @@ router.delete('/:tenantId/contacts/bulk/by-tag/:tagId', async (req, res) => {
     if (!tag) {
       return res.status(404).json({ error: 'Tag not found' });
     }
+
+    if (tag.isSystem) {
+      return res.status(403).json({
+        error: 'Contacts behind a ServiceTitan sync tag cannot be bulk deleted. They would be re-created on the next hourly sync and their message history would be lost.',
+      });
+    }
     
     const contactsWithTag = await prisma.contactTag.findMany({
       where: { tagId },

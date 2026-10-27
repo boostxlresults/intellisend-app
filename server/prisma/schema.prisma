@@ -181,6 +181,14 @@ model Contact {
   
   // PSA opt-in cooldown (Feature 4: 3-Phase PSA Workflow Engine)
   optInCooldownUntil DateTime? // Block marketing sends until this time after opt-in
+
+  // ServiceTitan mirror sync (audience layer). Set only for contacts managed
+  // by the mirror sync; null for contacts created any other way.
+  stCustomerId       String?   // ServiceTitan customer ID
+  smsTier            String?   // 'A' = number recorded in ServiceTitan, 'B' = known only from call history
+  consentClass       String?   // 'st_service' | 'st_call_history' (no marketing opt-in yet); null = not mirror-managed
+  mirrorFingerprint  String?   // Hash of mirrored fields; skips no-op updates
+  mirrorSyncedAt     DateTime? // Last time the mirror sync confirmed this contact
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -191,6 +199,7 @@ model Contact {
   messages        Message[]
   notes           ContactNote[]
 
+  @@unique([tenantId, stCustomerId])
   @@index([phone])
   @@index([tenantId])
 }
@@ -215,6 +224,9 @@ model Tag {
   tenantId  String
   name      String
   color     String?
+  // System tags are owned by the ServiceTitan mirror sync. They are added and
+  // removed automatically every run and cannot be edited by hand.
+  isSystem  Boolean  @default(false)
   createdAt DateTime @default(now())
 
   tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1007,3 +1019,21 @@ model Session {
   @@index([expire], map: "IDX_session_expire")
   @@map("sessions")
 }
+
+// ============================================
+// SERVICETITAN MIRROR SYNC (audience layer)
+// ============================================
+
+model MirrorSyncRun {
+  id          String    @id @default(uuid())
+  tenantId    String
+  status      String    // RUNNING | SUCCESS | FAILED
+  trigger     String    // scheduled | manual
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  stats       Json?
+  error       String?
+
+  @@index([tenantId, startedAt])
+}
+

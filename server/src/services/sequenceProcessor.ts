@@ -1,6 +1,7 @@
 import { prisma } from '../index';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 import { normalizePhone } from '../utils/phoneNormalize';
+import { blockedByConsent } from '../utils/consentGate';
 
 async function processSequenceSteps() {
   const now = new Date();
@@ -51,6 +52,15 @@ async function processSequenceSteps() {
         await prisma.sequenceEnrollmentStep.update({
           where: { id: enrollmentStep.id },
           data: { skipped: true, skipReason: 'Contact is suppressed' },
+        });
+        continue;
+      }
+
+      // ServiceTitan mirror contacts need a YES opt-in before drip marketing.
+      if (blockedByConsent(contact, 'SEQUENCE')) {
+        await prisma.sequenceEnrollmentStep.update({
+          where: { id: enrollmentStep.id },
+          data: { skipped: true, skipReason: 'Waiting for SMS opt-in (ServiceTitan contact)' },
         });
         continue;
       }

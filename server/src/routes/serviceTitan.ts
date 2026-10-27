@@ -1,6 +1,15 @@
 import { Router } from 'express';
 import { prisma } from '../index';
 import { testServiceTitanConnection } from '../services/serviceTitanClient';
+import { getMirrorTenantId, isMirrorConfigured } from '../services/mirror/mirrorClient';
+
+/** True when the ServiceTitan mirror sync owns this tenant's contacts and tags. */
+function mirrorManages(tenantId: string): boolean {
+  return isMirrorConfigured() && getMirrorTenantId() === tenantId;
+}
+
+const MIRROR_MANAGED_MESSAGE =
+  'Contacts for this account are synced hourly from the ServiceTitan mirror. Use Settings > ServiceTitan Mirror Sync to run it now.';
 
 const router = Router();
 
@@ -128,6 +137,9 @@ router.post('/:tenantId/servicetitan-test', async (req, res) => {
 router.post('/:tenantId/servicetitan/sync-contacts', async (req, res) => {
   try {
     const { tenantId } = req.params;
+    if (mirrorManages(tenantId)) {
+      return res.status(409).json({ error: MIRROR_MANAGED_MESSAGE });
+    }
     
     const { syncServiceTitanContacts } = await import('../services/serviceTitanContactSync');
     const result = await syncServiceTitanContacts(tenantId);
@@ -142,6 +154,9 @@ router.post('/:tenantId/servicetitan/sync-contacts', async (req, res) => {
 router.post('/:tenantId/servicetitan/import-contacts', async (req, res) => {
   try {
     const { tenantId } = req.params;
+    if (mirrorManages(tenantId)) {
+      return res.status(409).json({ error: MIRROR_MANAGED_MESSAGE });
+    }
     
     const { importServiceTitanContacts } = await import('../services/serviceTitanContactSync');
     const result = await importServiceTitanContacts(tenantId);

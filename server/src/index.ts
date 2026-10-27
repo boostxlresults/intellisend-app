@@ -28,6 +28,7 @@ import brandingRoutes from './routes/branding';
 import billingRoutes from './routes/billing';
 import serviceTitanRoutes from './routes/serviceTitan';
 import aiAgentRoutes from './routes/aiAgent';
+import mirrorSyncRoutes from './routes/mirrorSync';
 import { requireAuth } from './middleware/auth';
 // Object storage routes are only available in Replit environment
 // Import is done dynamically to avoid errors on Railway
@@ -107,6 +108,7 @@ app.use('/api/tenants', requireAuth, linkRoutes);
 app.use('/api/tenants', requireAuth, brandingRoutes);
 app.use('/api/tenants', requireAuth, billingRoutes);
 app.use('/api/tenants', requireAuth, serviceTitanRoutes);
+app.use('/api/tenants', requireAuth, mirrorSyncRoutes);
 app.use('/api', requireAuth, aiAgentRoutes);
 app.use('/api', templateRoutes);
 app.use('/', linkRoutes);

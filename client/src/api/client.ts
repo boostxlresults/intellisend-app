@@ -95,6 +95,8 @@ export interface Segment {
   tenantId: string;
   name: string;
   type: 'STATIC' | 'DYNAMIC';
+  definitionJson?: string | null;
+  excludedTagIds?: string[];
   createdAt?: string;
   _count?: {
     members: number;
@@ -179,8 +181,41 @@ export interface Tag {
   id: string;
   name: string;
   color?: string;
+  isSystem?: boolean;
   contactCount?: number;
   createdAt: string;
+}
+
+export interface MirrorSyncRun {
+  id: string;
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  trigger: 'scheduled' | 'manual';
+  startedAt: string;
+  finishedAt?: string | null;
+  error?: string | null;
+  stats?: {
+    profileRows: number;
+    contactsCreated: number;
+    contactsUpdated: number;
+    contactsAdopted: number;
+    contactsUnchanged: number;
+    managedNoLongerQualifying: number;
+    tagLinksAdded: number;
+    tagLinksRemoved: number;
+    suppressionsAdded: number;
+    dynamicSegmentsRefreshed: number;
+    mirrorRefreshedAt: string | null;
+    durationMs: number;
+  } | null;
+}
+
+export interface MirrorSyncStatus {
+  configured: boolean;
+  managesTenant: boolean;
+  enabled: boolean;
+  managedContacts: number;
+  runs: MirrorSyncRun[];
+  systemTags: Array<{ id: string; name: string; contactCount: number }>;
 }
 
 export interface KBArticle {
@@ -367,7 +402,13 @@ export const api = {
   getSegments: (tenantId: string) =>
     request<Segment[]>(`${API_BASE}/tenants/${tenantId}/segments`),
   
-  createSegment: (tenantId: string, data: { name: string; contactIds?: string[] }) =>
+  createSegment: (tenantId: string, data: {
+    name: string;
+    contactIds?: string[];
+    type?: 'STATIC' | 'DYNAMIC';
+    tagFilter?: { mode: 'ALL' | 'ANY' | 'NONE'; tagIds: string[] };
+    excludedTagIds?: string[];
+  }) =>
     request<Segment>(`${API_BASE}/tenants/${tenantId}/segments`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -644,11 +685,23 @@ export const api = {
       body: JSON.stringify({ tagNames }),
     }),
 
-  previewSegment: (tenantId: string, tagFilter: { mode: string; tagIds: string[] }) =>
-    request<{ totalCount: number; preview: Array<{ id: string; firstName: string; lastName: string; phone: string; tags: string[] }> }>(
+  previewSegment: (tenantId: string, tagFilter: { mode: string; tagIds: string[] }, excludedTagIds: string[] = []) =>
+    request<{ totalCount: number; preview: Array<{ id: string; firstName: string; lastName: string; phone: string; tags: Array<{ id: string; name: string; color: string }> }> }>(
       `${API_BASE}/tenants/${tenantId}/segments/preview`,
-      { method: 'POST', body: JSON.stringify({ tagFilter }) }
+      { method: 'POST', body: JSON.stringify({ tagFilter, excludedTagIds }) }
     ),
+
+  refreshSegment: (tenantId: string, segmentId: string) =>
+    request<{ count: number; added: number; removed: number; skipped: boolean }>(
+      `${API_BASE}/tenants/${tenantId}/segments/${segmentId}/refresh`,
+      { method: 'POST' }
+    ),
+
+  getMirrorSyncStatus: (tenantId: string) =>
+    request<MirrorSyncStatus>(`${API_BASE}/tenants/${tenantId}/mirror-sync/status`),
+
+  runMirrorSync: (tenantId: string) =>
+    request<{ started: boolean }>(`${API_BASE}/tenants/${tenantId}/mirror-sync/run`, { method: 'POST' }),
 
   getComplianceAnalytics: (tenantId: string, range: string = '30d') =>
     request<{
