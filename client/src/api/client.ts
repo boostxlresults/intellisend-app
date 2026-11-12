@@ -467,6 +467,9 @@ export const api = {
       method: 'DELETE',
     }),
   
+  pauseCampaign: (tenantId: string, campaignId: string) =>
+    request<{ message?: string }>(`${API_BASE}/tenants/${tenantId}/campaigns/${campaignId}/pause`, { method: 'POST' }),
+
   getCampaigns: (tenantId: string) =>
     request<Campaign[]>(`${API_BASE}/tenants/${tenantId}/campaigns`),
   
