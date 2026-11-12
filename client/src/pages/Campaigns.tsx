@@ -414,10 +414,9 @@ export default function Campaigns() {
                           style={{ backgroundColor: '#e53e3e', color: 'white', border: 'none' }}
                           onClick={async () => {
                             if (!selectedTenant) return;
-                            if (!confirm('Are you sure you want to PAUSE this campaign? All pending messages will be cancelled.')) return;
+                            if (!confirm('Are you sure you want to PAUSE this campaign? All pending messages will be canceled.')) return;
                             try {
-                              const res = await fetch(`/api/tenants/${selectedTenant.id}/campaigns/${campaign.id}/pause`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-                              const data = await res.json();
+                              const data = await api.pauseCampaign(selectedTenant.id, campaign.id);
                               alert(data.message || 'Campaign paused');
                               const updated = await api.getCampaigns(selectedTenant.id);
                               setCampaigns(updated);

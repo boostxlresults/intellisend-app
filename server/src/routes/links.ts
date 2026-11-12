@@ -4,6 +4,12 @@ import crypto from 'crypto';
 
 const router = express.Router();
 
+/**
+ * The only link route that is public: the short-link redirect customers tap.
+ * Everything on `router` manages a tenant's links and must sit behind login.
+ */
+export const publicLinkRouter = express.Router();
+
 function generateShortCode(): string {
   return crypto.randomBytes(4).toString('base64url');
 }
@@ -32,6 +38,10 @@ router.post('/:tenantId/links', async (req, res) => {
     const { tenantId } = req.params;
     const { originalUrl, campaignId, sequenceId } = req.body;
     
+    if (originalUrl && !/^https?:\/\//i.test(String(originalUrl))) {
+      return res.status(400).json({ error: 'Link must start with http:// or https://' });
+    }
+
     if (!originalUrl) {
       return res.status(400).json({ error: 'originalUrl is required' });
     }
@@ -116,7 +126,7 @@ router.delete('/:tenantId/links/:linkId', async (req, res) => {
   }
 });
 
-router.get('/l/:shortCode', async (req, res) => {
+publicLinkRouter.get('/l/:shortCode', async (req, res) => {
   try {
     const { shortCode } = req.params;
     const { c: contactId, p: phone } = req.query;

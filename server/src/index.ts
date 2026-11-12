@@ -23,7 +23,7 @@ import consentRoutes from './routes/consent';
 import tagRoutes from './routes/tags';
 import sequenceRoutes from './routes/sequences';
 import templateRoutes from './routes/templates';
-import linkRoutes from './routes/links';
+import linkRoutes, { publicLinkRouter } from './routes/links';
 import brandingRoutes from './routes/branding';
 import billingRoutes from './routes/billing';
 import serviceTitanRoutes from './routes/serviceTitan';
@@ -112,8 +112,9 @@ app.use('/api/tenants', requireAuth, serviceTitanRoutes);
 app.use('/api/tenants', requireAuth, mirrorSyncRoutes);
 app.use('/api/tenants', requireAuth, virtualCsrRoutes);
 app.use('/api', requireAuth, aiAgentRoutes);
-app.use('/api', templateRoutes);
-app.use('/', linkRoutes);
+app.use('/api', requireAuth, templateRoutes);
+// Public: short-link redirects only. Link management stays behind login above.
+app.use('/', publicLinkRouter);
 app.use('/webhooks/twilio', twilioWebhooks);
 app.use('/api/health', healthRoutes);
 

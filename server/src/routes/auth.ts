@@ -1,15 +1,28 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma } from '../index';
 
 const router = Router();
+
+/**
+ * Setup routes are off unless SETUP_KEY is set in the environment, and then
+ * only answer to that exact key. No key ships in source code.
+ */
+function setupKeyMatches(provided: unknown): boolean {
+  const expected = process.env.SETUP_KEY;
+  if (!expected || typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 router.post('/setup-admin', async (req, res) => {
   try {
     const { email, password, tenantName, setupKey } = req.body;
 
-    if (setupKey !== 'INTELLISEND_SETUP_2024') {
-      res.status(403).json({ error: 'Invalid setup key' });
+    if (!setupKeyMatches(setupKey)) {
+      res.status(404).json({ error: 'Not found' });
       return;
     }
 
@@ -59,8 +72,8 @@ router.post('/set-unlimited-plan', async (req, res) => {
   try {
     const { tenantId, setupKey } = req.body;
 
-    if (setupKey !== 'INTELLISEND_SETUP_2024') {
-      res.status(403).json({ error: 'Invalid setup key' });
+    if (!setupKeyMatches(setupKey)) {
+      res.status(404).json({ error: 'Not found' });
       return;
     }
 
