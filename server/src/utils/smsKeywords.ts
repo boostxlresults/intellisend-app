@@ -117,9 +117,34 @@ export function isStopKeyword(body: string | undefined | null): boolean {
   return false;
 }
 
+/**
+ * Hostile wording aimed at the sender, matched anywhere in the message.
+ * Swearing about something else ("my damn AC broke again") is not an opt-out.
+ */
+const HOSTILE_PATTERNS = [
+  /\b(FUCK|FUCKING|FCK|FUK|FK|F|SCREW|EFF) (YOU|U|YOURSELF|YOURSELVES|OFF|YALL|Y'ALL|YA)\b/,
+  /\bGO (FUCK|FCK|F|SCREW) (YOURSELF|YOURSELVES)\b/,
+  /\b(STFU|GFY|GTFO|FOAD)\b/,
+  /\b(EAT SHIT|GO TO HELL|PISS OFF|KISS MY ASS|BITE ME|DROP DEAD|LEAVE ME ALONE|LOSE MY NUMBER)\b/,
+  /\b(DELETE|REMOVE) MY (NUMBER|PHONE|INFO|INFORMATION)\b/,
+];
+
+/** Turn masked swearing ("f*** you", "f%^* you", "f**k off") back into the plain word. */
+function unmaskProfanity(body: string): string {
+  return body
+    .toUpperCase()
+    // "f/u" is shorthand for "follow up", not an insult.
+    .replace(/\bF\/U\b/g, 'FOLLOWUP')
+    .replace(/\bF[*@#$%^&!_.\-]+(?:C?K(?:ING)?)?(?=\s|$|[.,!?])/g, 'FUCK');
+}
+
 export function isNegativeSentiment(body: string | undefined | null): boolean {
-  const normalized = normalizeKeywordText(body);
+  const normalized = normalizeKeywordText(body ? unmaskProfanity(body) : body);
   if (!normalized) return false;
+
+  if (normalized === 'FUCK' || HOSTILE_PATTERNS.some(pattern => pattern.test(normalized))) {
+    return true;
+  }
 
   if (NEGATIVE_SENTIMENT_EXACT.includes(normalized)) {
     return true;

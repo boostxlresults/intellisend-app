@@ -29,6 +29,21 @@ test('FCC keywords are caught by the keyword check itself', () => {
   for (const msg of ['stop', 'quit', 'end', 'revoke', 'opt out', 'cancel', 'unsubscribe', 'Stop.', 'REVOKE!'])
     assert.equal(isStopKeyword(msg), true, msg);
 });
+test('hostile replies opt the customer out', () => {
+  const hostile = [
+    'fuck you', 'Fuck you!', 'FUCK OFF', 'f you', 'F U', 'fu', 'f*** you', 'f%^* you', 'f**k off', 'f*ck you', 'F--- you',
+    'fuck you assholes', 'go fuck yourself', 'Go f yourself', 'screw you guys', 'stfu', 'STFU already', 'gfy',
+    'eat shit', 'go to hell', 'piss off', 'Leave me alone!', 'lose my number', 'delete my number', 'fuck', 'F***',
+    'who is this? fuck off', 'fucking stop texting me',
+  ];
+  for (const msg of hostile) assert.equal(isStopOrNegative(msg), true, `should opt out: "${msg}"`);
+  const notHostile = [
+    'my fucking AC broke again, can someone come today?', 'this damn water heater is leaking', 'Friday works',
+    'holy shit that was fast, thank you', 'F150 is in the driveway, park behind it', 'f/u on my estimate please',
+    'What the hell is a recoat?',
+  ];
+  for (const msg of notHostile) assert.equal(isStopOrNegative(msg), false, `should NOT opt out: "${msg}"`);
+});
 test('opt-in and help tolerate punctuation', () => {
   assert.equal(isOptInKeyword('Yes!'), true);
   assert.equal(isOptInKeyword('yes please'), false);
