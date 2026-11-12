@@ -191,12 +191,10 @@ export async function sendSmsForTenant(options: SendSmsOptions): Promise<SendSms
       };
     }
 
-    const suppression = await prisma.suppression.findUnique({
+    const suppression = await prisma.suppression.findFirst({
       where: {
-        tenantId_phone: {
-          tenantId: options.tenantId,
-          phone: options.toNumber,
-        },
+        tenantId: options.tenantId,
+        phone: { in: [options.toNumber, normalizePhone(options.toNumber)] },
       },
     });
 

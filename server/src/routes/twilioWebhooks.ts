@@ -97,6 +97,17 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
         },
       });
       
+      // Keep a dated record of the opt-out itself, separate from the suppression row.
+      await prisma.messageEvent.create({
+        data: {
+          tenantId,
+          phone: From,
+          eventType: 'OPT_OUT',
+          messageId: MessageSid || null,
+          errorMessage: `${reason}: ${(Body || '').trim().slice(0, 200)}`,
+        },
+      }).catch(err => console.error('[Opt-out] Failed to record OPT_OUT event (non-blocking):', err));
+
       console.log(`Contact ${From} opted out for tenant ${tenantId} (${reason}: "${Body?.trim()}")`);
       
       const confirmationMessage = `You've been unsubscribed from ${tenant.publicName} messages. You will not receive any further texts. Reply HELP for help.`;
@@ -110,8 +121,17 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       return;
     }
     
-    // Flag for opt-in processing (will apply tag after contact is found/created)
-    const isOptIn = isOptInKeyword(Body);
+    // Flag for opt-in processing (will apply tag after contact is found/created).
+    // An opt-out is permanent: a later "YES" never re-subscribes a number on the
+    // suppression list, and never removes it from that list.
+    const alreadyOptedOut = await prisma.suppression.findFirst({
+      where: { tenantId, phone: { in: [From, normalizePhone(From)] } },
+      select: { id: true },
+    });
+    const isOptIn = isOptInKeyword(Body) && !alreadyOptedOut;
+    if (alreadyOptedOut && isOptInKeyword(Body)) {
+      console.log(`Contact ${From} replied "${Body?.trim()}" but is on the suppression list for tenant ${tenantId}; opt-out stays in place`);
+    }
     
     let contact = await prisma.contact.findFirst({
       where: { tenantId, phone: From },
@@ -216,11 +236,6 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
           consentSource: 'SMS_REPLY_Y',
           consentTimestamp: new Date(),
         },
-      });
-      
-      // Remove from suppression list if they were suppressed
-      await prisma.suppression.deleteMany({
-        where: { tenantId, phone: From },
       });
       
       // Create a formal ConsentRecord for TCPA audit trail
