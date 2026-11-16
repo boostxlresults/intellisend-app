@@ -1,4 +1,5 @@
 import { prisma } from '../index';
+import { marketingSendsEnabled } from '../utils/sendLock';
 import { sendSmsForTenant, checkSuppression } from '../twilio/twilioClient';
 import { recordUsage } from '../routes/billing';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
@@ -107,10 +108,14 @@ async function processOutboundQueue() {
     });
     const pausedCampaignIds = new Set(pausedCampaigns.map(c => c.id));
 
+    // Master lock: while marketing sends are switched off, campaign and sequence
+    // rows are not even read, so they stay PENDING and cannot hold up replies.
+    const marketingLocked = !marketingSendsEnabled();
     const pendingMessages = await prisma.outboundMessageQueue.findMany({
       where: {
         status: 'PENDING',
         processAfter: { lte: now },
+        ...(marketingLocked ? { campaignId: null, sequenceEnrollmentStepId: null } : {}),
       },
       orderBy: { processAfter: 'asc' },
       take: MAX_BATCH_SIZE,
@@ -188,10 +193,13 @@ async function processOutboundQueue() {
             break;
           }
 
-          await prisma.outboundMessageQueue.update({
-            where: { id: queueItem.id },
+          // Claim the row only if it is still PENDING. If another process took it
+          // first, skip it instead of sending it a second time.
+          const claimedRow = await prisma.outboundMessageQueue.updateMany({
+            where: { id: queueItem.id, status: 'PENDING' },
             data: { status: 'PROCESSING', attempts: queueItem.attempts + 1 },
           });
+          if (claimedRow.count === 0) continue;
 
           if (queueItem.campaignId && queueItem.campaignStepId) {
             const alreadySentForPhone = await prisma.message.findFirst({

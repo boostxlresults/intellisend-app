@@ -1,9 +1,12 @@
 import { prisma } from '../index';
+import { marketingSendsEnabled } from '../utils/sendLock';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
 import { normalizePhone } from '../utils/phoneNormalize';
 import { blockedByConsent } from '../utils/consentGate';
 
 async function processSequenceSteps() {
+  // Master lock: no sequence step is queued while marketing sends are switched off.
+  if (!marketingSendsEnabled()) return;
   const now = new Date();
   
   const dueSteps = await prisma.sequenceEnrollmentStep.findMany({
@@ -80,6 +83,14 @@ async function processSequenceSteps() {
         continue;
       }
       
+      // A step is queued once. Without this check the same step was queued again
+      // on every 30-second pass until its first copy had been delivered.
+      const alreadyQueued = await prisma.outboundMessageQueue.findFirst({
+        where: { sequenceEnrollmentStepId: enrollmentStep.id },
+        select: { id: true },
+      });
+      if (alreadyQueued) continue;
+
       const fromNumber = sendContext.fromNumber;
       
       let body = enrollmentStep.step.bodyTemplate;

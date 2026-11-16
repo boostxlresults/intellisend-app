@@ -1,5 +1,6 @@
 import express from 'express';
 import { prisma } from '../index';
+import { marketingSendsEnabled, MARKETING_LOCK_MESSAGE } from '../utils/sendLock';
 
 const router = express.Router();
 
@@ -157,6 +158,10 @@ router.post('/:tenantId/sequences/:sequenceId/enroll', async (req, res) => {
   try {
     const { tenantId, sequenceId } = req.params;
     const { contactIds } = req.body;
+
+    if (!marketingSendsEnabled()) {
+      return res.status(423).json({ error: MARKETING_LOCK_MESSAGE, marketingLocked: true });
+    }
     
     if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
       return res.status(400).json({ error: 'contactIds array is required' });
