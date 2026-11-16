@@ -1,4 +1,5 @@
 import { prisma } from '../index';
+import { marketingSendsEnabled } from '../utils/sendLock';
 import { checkSuppression } from '../twilio/twilioClient';
 import { generateImprovedMessage } from '../ai/aiEngine';
 import { getTenantSendContext, isWithinQuietHours } from './tenantSettings';
@@ -85,6 +86,8 @@ export function startCampaignScheduler() {
 }
 
 async function processScheduledCampaigns() {
+  // Master lock: no campaign is started while marketing sends are switched off.
+  if (!marketingSendsEnabled()) return;
   schedulerRunning = true;
   try {
     const now = new Date();
@@ -99,10 +102,12 @@ async function processScheduledCampaigns() {
       select: { id: true, name: true },
     });
     for (const stuck of stuckCampaigns) {
-      console.error(`[Scheduler] STUCK CAMPAIGN DETECTED: ${stuck.name} (${stuck.id}) has been RUNNING for >30 min. Resetting to SCHEDULED.`);
-      await prisma.campaign.update({
-        where: { id: stuck.id },
-        data: { status: 'SCHEDULED' },
+      // Never re-fire automatically: a campaign that stalled may already have queued
+      // part of its audience. Pause it and leave the decision to a person.
+      console.error(`[Scheduler] STUCK CAMPAIGN DETECTED: ${stuck.name} (${stuck.id}) has been RUNNING for >30 min. Pausing it; it will not be restarted automatically.`);
+      await prisma.campaign.updateMany({
+        where: { id: stuck.id, status: 'RUNNING' },
+        data: { status: 'PAUSED' },
       });
     }
     
@@ -129,13 +134,13 @@ async function processScheduledCampaigns() {
         await processSingleCampaign(toProcess, now);
       } catch (campaignError: any) {
         console.error(`[Scheduler] CRITICAL ERROR processing campaign ${campaign.id} (${campaign.name}): ${campaignError.message}`);
-        // Reset campaign to SCHEDULED so it can be retried on next tick
+        // Do not retry automatically: part of the audience may already be queued.
         try {
-          await prisma.campaign.update({
-            where: { id: campaign.id },
-            data: { status: 'SCHEDULED' },
+          await prisma.campaign.updateMany({
+            where: { id: campaign.id, status: { in: ['SCHEDULED', 'RUNNING'] } },
+            data: { status: 'PAUSED' },
           });
-          console.log(`[Scheduler] Reset campaign ${campaign.id} to SCHEDULED for retry`);
+          console.log(`[Scheduler] Paused campaign ${campaign.id} after an error; it will not be retried automatically`);
         } catch (resetError: any) {
           console.error(`[Scheduler] Failed to reset campaign ${campaign.id}: ${resetError.message}`);
         }
@@ -457,8 +462,13 @@ async function processSingleCampaign(campaign: any, now: Date) {
     console.log(`[Scheduler] Campaign ${campaign.name}: no new messages to queue (${skippedCount} skipped, ${suppressedCount} suppressed, ${consentSkippedCount} held for opt-in)`);
   }
   
-  await prisma.campaign.update({
-    where: { id: campaign.id },
+  // Only mark it completed if it is still running. A pause made while the
+  // audience was being queued must not be overwritten.
+  const completed = await prisma.campaign.updateMany({
+    where: { id: campaign.id, status: 'RUNNING' },
     data: { status: 'COMPLETED' },
   });
+  if (completed.count === 0) {
+    console.warn(`[Scheduler] Campaign ${campaign.name} (${campaign.id}) was paused or changed while queuing; leaving its status as is`);
+  }
 }

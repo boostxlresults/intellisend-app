@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index';
+import { marketingSendsEnabled, MARKETING_LOCK_MESSAGE } from '../utils/sendLock';
 import { generateImprovedMessage } from '../ai/aiEngine';
 
 const router = Router();
@@ -177,6 +178,10 @@ router.post('/:tenantId/campaigns/:campaignId/schedule', async (req, res) => {
   try {
     const { tenantId, campaignId } = req.params;
     const { startAt } = req.body;
+
+    if (!marketingSendsEnabled()) {
+      return res.status(423).json({ error: MARKETING_LOCK_MESSAGE, marketingLocked: true });
+    }
     
     const campaign = await prisma.campaign.findFirst({
       where: { id: campaignId, tenantId },
