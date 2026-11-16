@@ -36,6 +36,8 @@ jobs:
           { npx prisma validate && npx prisma generate; } 2>&1 | tee ../prisma.log || { grep -v '^$' ../prisma.log | tail -20 | sed 's/^/::error::/'; exit 1; }
       - name: Typecheck
         run: npx tsc --noEmit --pretty false
+      - name: Tests
+        run: npx tsx --test tests/*.test.ts
 
   db-upgrade:
     name: Database upgrade (same as Railway start)

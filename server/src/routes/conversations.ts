@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../index';
+import { normalizePhone } from '../utils/phoneNormalize';
 import { sendSmsForTenant } from '../twilio/twilioClient';
 import { suggestRepliesForInboundMessage } from '../ai/aiEngine';
 import { getTenantSendContext, isWithinQuietHours } from '../services/tenantSettings';
@@ -153,12 +154,12 @@ router.post('/:tenantId/conversations/:conversationId/messages', async (req, res
       return res.status(404).json({ error: 'Conversation not found' });
     }
     
-    const suppression = await prisma.suppression.findUnique({
+    // Match the number as stored and in its normalized form, so an opted-out
+    // contact saved as "(520) 555-1234" is still blocked.
+    const suppression = await prisma.suppression.findFirst({
       where: {
-        tenantId_phone: {
-          tenantId,
-          phone: conversation.contact.phone,
-        },
+        tenantId,
+        phone: { in: [conversation.contact.phone, normalizePhone(conversation.contact.phone)] },
       },
     });
     
