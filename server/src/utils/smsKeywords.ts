@@ -34,6 +34,9 @@ export function normalizeKeywordText(body: string | undefined | null): string {
     .trim();
 }
 
+/** Words a customer can text to undo their own opt-out. Carriers treat these as the standard way back in. */
+export const START_KEYWORDS = ['START', 'UNSTOP'];
+
 export const HELP_KEYWORDS = ['HELP', 'INFO'];
 
 export const OPTIN_KEYWORDS = ['Y', 'YES', 'YEP', 'YA', 'YEAH'];
@@ -177,4 +180,10 @@ export function containsStopKeyword(body: string | undefined | null): boolean {
   if (!body) return false;
   const normalized = body.trim().toUpperCase();
   return STOP_KEYWORDS.some(keyword => normalized.includes(keyword));
+}
+
+export function isStartKeyword(body: string | undefined | null): boolean {
+  const normalized = normalizeKeywordText(body);
+  if (!normalized) return false;
+  return START_KEYWORDS.includes(normalized);
 }
