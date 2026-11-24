@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../index';
 import { validateTwilioSignature } from '../middleware/twilioSignature';
-import { isStopKeyword, isOptInKeyword, isNegativeSentiment } from '../utils/smsKeywords';
+import { isStopKeyword, isOptInKeyword, isNegativeSentiment, isStartKeyword } from '../utils/smsKeywords';
 import { logMessageEvent } from '../twilio/twilioClient';
 import { sendReplyNotification } from '../services/emailNotifications';
 import { handleInboundMessage } from '../services/aiAgent/conversationHandler';
@@ -121,6 +121,28 @@ router.post('/inbound', validateTwilioSignature, async (req, res) => {
       return;
     }
     
+    // START or UNSTOP from the customer's own phone undoes their own opt-out. It is
+    // the only thing that does. It does not record marketing consent, and it does
+    // not remove an entry a staff member added by hand.
+    if (isStartKeyword(Body)) {
+      const lifted = await prisma.suppression.deleteMany({
+        where: {
+          tenantId,
+          phone: { in: [From, normalizePhone(From)] },
+          reason: { in: ['STOP', 'NEGATIVE_SENTIMENT'] },
+        },
+      });
+      if (lifted.count > 0) {
+        console.log(`Contact ${From} texted "${Body?.trim()}" and lifted their own opt-out for tenant ${tenantId}`);
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>You're resubscribed to ${tenant.publicName} messages. Reply STOP at any time to opt out.</Message>
+</Response>`;
+        res.type('text/xml').send(xml);
+        return;
+      }
+    }
+
     // Flag for opt-in processing (will apply tag after contact is found/created).
     // An opt-out is permanent: a later "YES" never re-subscribes a number on the
     // suppression list, and never removes it from that list.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isStopKeyword, isStopOrNegative, isOptInKeyword, isHelpKeyword } from '../src/utils/smsKeywords';
+import { isStartKeyword, isStopKeyword, isStopOrNegative, isOptInKeyword, isHelpKeyword } from '../src/utils/smsKeywords';
 
 const mustOptOut = [
   'STOP', 'stop', 'Stop.', 'STOP!', ' stop ', 'STOP!!!', 'Stop please', 'please stop', 'Please stop.',
@@ -48,4 +48,9 @@ test('opt-in and help tolerate punctuation', () => {
   assert.equal(isOptInKeyword('Yes!'), true);
   assert.equal(isOptInKeyword('yes please'), false);
   assert.equal(isHelpKeyword('help?'), true);
+});
+
+test('only START and UNSTOP lift an opt-out', () => {
+  for (const msg of ['START', 'start', 'Start.', 'UNSTOP', 'unstop!']) assert.equal(isStartKeyword(msg), true, msg);
+  for (const msg of ['yes', 'Y', 'start texting me', 'when can you start?', 'ok', 'subscribe', '']) assert.equal(isStartKeyword(msg), false, msg);
 });
